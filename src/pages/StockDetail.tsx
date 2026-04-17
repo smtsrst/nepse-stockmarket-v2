@@ -1,7 +1,23 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, TrendingUp, TrendingDown, RefreshCw, AlertCircle, ArrowUp, ArrowDown } from 'lucide-react';
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
+import {
+  ArrowLeft,
+  TrendingUp,
+  TrendingDown,
+  RefreshCw,
+  AlertCircle,
+  ArrowUp,
+  ArrowDown,
+} from 'lucide-react';
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  ReferenceLine,
+} from 'recharts';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://frontend-eight-tan-70.vercel.app/api';
 
@@ -48,7 +64,12 @@ interface Prediction {
 type TimeRange = '1W' | '1M' | '3M' | '6M' | '1Y' | 'ALL';
 
 const timeRangeDays: Record<TimeRange, number> = {
-  '1W': 7, '1M': 30, '3M': 90, '6M': 180, '1Y': 365, 'ALL': 1000,
+  '1W': 7,
+  '1M': 30,
+  '3M': 90,
+  '6M': 180,
+  '1Y': 365,
+  ALL: 1000,
 };
 
 export default function StockDetail() {
@@ -70,25 +91,46 @@ export default function StockDetail() {
     if (!symbol) return;
     try {
       if (isRefresh) setRefreshing(true);
-      
+
       const [allStocks, historyData, analysisData, predictionData] = await Promise.all([
-        fetch(`${API_URL}/stocks`).then(r => r.json()).catch(() => []),
-        fetch(`${API_URL}/history?symbol=${symbol}&days=${timeRangeDays[timeRange]}`).then(r => r.json()).catch(() => null),
-        fetch(`${API_URL}/analysis?symbol=${symbol}`).then(r => r.json()).catch(() => null),
-        fetch(`${API_URL}/predict?symbol=${symbol}`).then(r => r.json()).catch(() => null),
+        fetch(`${API_URL}/stocks`)
+          .then((r) => r.json())
+          .catch(() => []),
+        fetch(`${API_URL}/history?symbol=${symbol}&days=${timeRangeDays[timeRange]}`)
+          .then((r) => r.json())
+          .catch(() => null),
+        fetch(`${API_URL}/analysis?symbol=${symbol}`)
+          .then((r) => r.json())
+          .catch(() => null),
+        fetch(`${API_URL}/predict?symbol=${symbol}`)
+          .then((r) => r.json())
+          .catch(() => null),
       ]);
 
-      const foundStock = Array.isArray(allStocks) ? allStocks.find((s: any) => s.symbol === symbol?.toUpperCase()) : null;
+      const foundStock = Array.isArray(allStocks)
+        ? allStocks.find((s: any) => s.symbol === symbol?.toUpperCase())
+        : null;
       if (foundStock) setStock(foundStock);
-      
-      if (historyData?.history) {
-        setHistory(historyData.history.map((h: any) => ({
-          date: h.date, open: h.open, high: h.high, low: h.low, close: h.close, volume: h.volume,
-        })).reverse());
+
+      if (historyData && historyData.history && Array.isArray(historyData.history)) {
+        setHistory(
+          historyData.history
+            .map((h: any) => ({
+              date: h.date,
+              open: h.open,
+              high: h.high,
+              low: h.low,
+              close: h.close,
+              volume: h.volume,
+            }))
+            .reverse()
+        );
       }
-      
-      if (analysisData && !analysisData.error) setAnalysis(analysisData);
-      if (predictionData && !predictionData.error) setPrediction(predictionData);
+
+      if (analysisData && !analysisData.error && analysisData.rsi !== undefined)
+        setAnalysis(analysisData);
+      if (predictionData && !predictionData.error && predictionData.prediction)
+        setPrediction(predictionData);
     } catch (error) {
       console.error('Error loading stock data:', error);
     } finally {
@@ -100,10 +142,12 @@ export default function StockDetail() {
   const formatDate = (dateStr: string) => {
     try {
       return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    } catch { return dateStr; }
+    } catch {
+      return dateStr;
+    }
   };
 
-  const chartData = history.map(h => ({
+  const chartData = history.map((h) => ({
     date: formatDate(h.date),
     rawDate: h.date,
     price: h.close,
@@ -112,8 +156,18 @@ export default function StockDetail() {
   }));
 
   const isPositive = (stock?.percentageChange || 0) >= 0;
-  const trendColor = analysis?.trend === 'UPTREND' ? 'text-gain' : analysis?.trend === 'DOWNTREND' ? 'text-loss' : 'text-secondary';
-  const signalColor = analysis?.signal === 'BUY' ? 'text-gain' : analysis?.signal === 'SELL' ? 'text-loss' : 'text-secondary';
+  const trendColor =
+    analysis?.trend === 'UPTREND'
+      ? 'text-gain'
+      : analysis?.trend === 'DOWNTREND'
+        ? 'text-loss'
+        : 'text-secondary';
+  const signalColor =
+    analysis?.signal === 'BUY'
+      ? 'text-gain'
+      : analysis?.signal === 'SELL'
+        ? 'text-loss'
+        : 'text-secondary';
   const chartColor = isPositive ? '#00ff41' : '#ff3333';
 
   return (
@@ -123,7 +177,7 @@ export default function StockDetail() {
         <button onClick={() => navigate(-1)} className="back-btn">
           <ArrowLeft size={16} />
         </button>
-        
+
         <div className="stock-info">
           <div className="stock-symbol-large">{stock?.symbol || symbol}</div>
           <div className="stock-name-large">{stock?.name || 'Loading...'}</div>
@@ -133,7 +187,8 @@ export default function StockDetail() {
           <div className="stock-price-display">
             <span className="current-price">Rs. {stock.lastTradedPrice?.toLocaleString()}</span>
             <span className={`price-change ${isPositive ? 'text-gain' : 'text-loss'}`}>
-              {isPositive ? '+' : ''}{stock.percentageChange?.toFixed(2)}%
+              {isPositive ? '+' : ''}
+              {stock.percentageChange?.toFixed(2)}%
             </span>
           </div>
         )}
@@ -162,14 +217,14 @@ export default function StockDetail() {
           <div className="card-header">
             <span>PRICE CHART</span>
             {analysis && (
-              <span className={`signal-badge ${signalColor}`}>
-                {analysis.signal} SIGNAL
-              </span>
+              <span className={`signal-badge ${signalColor}`}>{analysis.signal} SIGNAL</span>
             )}
           </div>
           <div className="chart-container">
             {loading ? (
-              <div className="loading-container"><div className="loading-spinner"></div></div>
+              <div className="loading-container">
+                <div className="loading-spinner"></div>
+              </div>
             ) : chartData.length === 0 ? (
               <div className="empty-state">
                 <AlertCircle size={32} />
@@ -180,23 +235,51 @@ export default function StockDetail() {
                 <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                   <defs>
                     <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor={chartColor} stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor={chartColor} stopOpacity={0}/>
+                      <stop offset="5%" stopColor={chartColor} stopOpacity={0.3} />
+                      <stop offset="95%" stopColor={chartColor} stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <XAxis dataKey="date" stroke="#333" tick={{ fill: '#666', fontSize: 10 }} axisLine={{ stroke: '#222' }} tickLine={false} />
-                  <YAxis stroke="#333" tick={{ fill: '#666', fontSize: 10 }} axisLine={{ stroke: '#222' }} tickLine={false} domain={['auto', 'auto']} tickFormatter={(v) => `Rs ${v}`} width={70} />
-                  <Tooltip 
+                  <XAxis
+                    dataKey="date"
+                    stroke="#333"
+                    tick={{ fill: '#666', fontSize: 10 }}
+                    axisLine={{ stroke: '#222' }}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    stroke="#333"
+                    tick={{ fill: '#666', fontSize: 10 }}
+                    axisLine={{ stroke: '#222' }}
+                    tickLine={false}
+                    domain={['auto', 'auto']}
+                    tickFormatter={(v) => `Rs ${v}`}
+                    width={70}
+                  />
+                  <Tooltip
                     contentStyle={{ background: '#0a0a0a', border: '1px solid #222', fontSize: 12 }}
                     formatter={(value: number) => [`Rs. ${value.toLocaleString()}`, 'Price']}
                   />
                   {analysis?.bollinger_bands && (
                     <>
-                      <ReferenceLine y={analysis.bollinger_bands.upper} stroke="#333" strokeDasharray="3 3" />
-                      <ReferenceLine y={analysis.bollinger_bands.lower} stroke="#333" strokeDasharray="3 3" />
+                      <ReferenceLine
+                        y={analysis.bollinger_bands.upper}
+                        stroke="#333"
+                        strokeDasharray="3 3"
+                      />
+                      <ReferenceLine
+                        y={analysis.bollinger_bands.lower}
+                        stroke="#333"
+                        strokeDasharray="3 3"
+                      />
                     </>
                   )}
-                  <Area type="monotone" dataKey="price" stroke={chartColor} strokeWidth={1.5} fill="url(#chartGradient)" />
+                  <Area
+                    type="monotone"
+                    dataKey="price"
+                    stroke={chartColor}
+                    strokeWidth={1.5}
+                    fill="url(#chartGradient)"
+                  />
                 </AreaChart>
               </ResponsiveContainer>
             )}
@@ -233,21 +316,27 @@ export default function StockDetail() {
           <div className="card-header">TECHNICAL INDICATORS</div>
           <div className="card-body">
             {loading ? (
-              <div className="loading-container"><div className="loading-spinner"></div></div>
+              <div className="loading-container">
+                <div className="loading-spinner"></div>
+              </div>
             ) : !analysis ? (
-              <div className="empty-state"><p>Analysis unavailable</p></div>
+              <div className="empty-state">
+                <p>Analysis unavailable</p>
+              </div>
             ) : (
               <div className="indicators-grid">
                 {/* RSI */}
                 <div className="indicator-row">
                   <span className="indicator-label">RSI (14)</span>
-                  <span className={`indicator-value ${
-                    analysis.rsi >= 70 ? 'text-loss' : analysis.rsi <= 30 ? 'text-gain' : ''
-                  }`}>
+                  <span
+                    className={`indicator-value ${
+                      analysis.rsi >= 70 ? 'text-loss' : analysis.rsi <= 30 ? 'text-gain' : ''
+                    }`}
+                  >
                     {analysis.rsi.toFixed(1)}
                   </span>
                 </div>
-                
+
                 {/* MACD */}
                 <div className="indicator-row">
                   <span className="indicator-label">MACD</span>
@@ -259,7 +348,9 @@ export default function StockDetail() {
                 </div>
                 <div className="indicator-row sub">
                   <span className="indicator-label">Histogram</span>
-                  <span className={`indicator-value ${analysis.macd.histogram >= 0 ? 'text-gain' : 'text-loss'}`}>
+                  <span
+                    className={`indicator-value ${analysis.macd.histogram >= 0 ? 'text-gain' : 'text-loss'}`}
+                  >
                     {analysis.macd.histogram.toFixed(2)}
                   </span>
                 </div>
@@ -277,11 +368,15 @@ export default function StockDetail() {
                 {/* Bollinger */}
                 <div className="indicator-row">
                   <span className="indicator-label">BB Upper</span>
-                  <span className="indicator-value">Rs. {analysis.bollinger_bands.upper.toFixed(2)}</span>
+                  <span className="indicator-value">
+                    Rs. {analysis.bollinger_bands.upper.toFixed(2)}
+                  </span>
                 </div>
                 <div className="indicator-row">
                   <span className="indicator-label">BB Lower</span>
-                  <span className="indicator-value">Rs. {analysis.bollinger_bands.lower.toFixed(2)}</span>
+                  <span className="indicator-value">
+                    Rs. {analysis.bollinger_bands.lower.toFixed(2)}
+                  </span>
                 </div>
 
                 {/* Trend */}
@@ -303,21 +398,36 @@ export default function StockDetail() {
           <div className="card-header">ML PREDICTION</div>
           <div className="card-body">
             {loading ? (
-              <div className="loading-container"><div className="loading-spinner"></div></div>
+              <div className="loading-container">
+                <div className="loading-spinner"></div>
+              </div>
             ) : !prediction ? (
-              <div className="empty-state"><p>Prediction unavailable</p></div>
+              <div className="empty-state">
+                <p>Prediction unavailable</p>
+              </div>
             ) : (
               <div className="prediction-section">
-                <div className={`prediction-icon ${prediction.prediction === 'UP' ? 'up' : prediction.prediction === 'DOWN' ? 'down' : 'neutral'}`}>
+                <div
+                  className={`prediction-icon ${prediction.prediction === 'UP' ? 'up' : prediction.prediction === 'DOWN' ? 'down' : 'neutral'}`}
+                >
                   {prediction.prediction === 'UP' && <ArrowUp size={32} />}
                   {prediction.prediction === 'DOWN' && <ArrowDown size={32} />}
                 </div>
                 <div className="prediction-text">
-                  <span className={`prediction-label ${
-                    prediction.prediction === 'UP' ? 'text-gain' : 
-                    prediction.prediction === 'DOWN' ? 'text-loss' : 'text-secondary'
-                  }`}>
-                    {prediction.prediction === 'UP' ? 'BULLISH' : prediction.prediction === 'DOWN' ? 'BEARISH' : 'NEUTRAL'}
+                  <span
+                    className={`prediction-label ${
+                      prediction.prediction === 'UP'
+                        ? 'text-gain'
+                        : prediction.prediction === 'DOWN'
+                          ? 'text-loss'
+                          : 'text-secondary'
+                    }`}
+                  >
+                    {prediction.prediction === 'UP'
+                      ? 'BULLISH'
+                      : prediction.prediction === 'DOWN'
+                        ? 'BEARISH'
+                        : 'NEUTRAL'}
                   </span>
                 </div>
                 <div className="confidence-bar">
@@ -326,18 +436,25 @@ export default function StockDetail() {
                     <span>{(prediction.confidence * 100).toFixed(1)}%</span>
                   </div>
                   <div className="confidence-track">
-                    <div className="confidence-fill" style={{ width: `${prediction.confidence * 100}%` }}></div>
+                    <div
+                      className="confidence-fill"
+                      style={{ width: `${prediction.confidence * 100}%` }}
+                    ></div>
                   </div>
                 </div>
                 {prediction.predicted_price && (
                   <div className="prediction-prices">
                     <div className="pred-price">
                       <span className="pred-label">Current</span>
-                      <span className="pred-value">Rs. {prediction.current_price.toLocaleString()}</span>
+                      <span className="pred-value">
+                        Rs. {prediction.current_price.toLocaleString()}
+                      </span>
                     </div>
                     <div className="pred-price">
                       <span className="pred-label">Predicted</span>
-                      <span className={`pred-value ${(prediction.change_percent || 0) >= 0 ? 'text-gain' : 'text-loss'}`}>
+                      <span
+                        className={`pred-value ${(prediction.change_percent || 0) >= 0 ? 'text-gain' : 'text-loss'}`}
+                      >
                         Rs. {prediction.predicted_price.toLocaleString()}
                       </span>
                     </div>
