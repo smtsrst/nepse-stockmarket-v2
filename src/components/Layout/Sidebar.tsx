@@ -1,122 +1,218 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, TrendingUp, Wallet, FileText, Settings, LogOut, Activity, List, Eye, ListFilter, History, Bell, FlaskConical, Database } from 'lucide-react';
+import {
+  LayoutDashboard,
+  TrendingUp,
+  Search,
+  BarChart3,
+  Eye,
+  ListFilter,
+  PieChart,
+  History,
+  Calendar,
+  Info,
+  Settings,
+  Cpu,
+} from 'lucide-react';
 import { useState } from 'react';
 
-interface SidebarProps {
-  onLogout: () => void;
-  marketOpen: boolean;
-  onExpandChange?: (expanded: boolean) => void;
-}
-
 const navItems = [
-  { path: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { path: '/stocks', label: 'Stocks', icon: List },
-  { path: '/screener', label: 'Screener', icon: ListFilter },
-  { path: '/analysis', label: 'Analysis', icon: TrendingUp },
-  { path: '/portfolio', label: 'Portfolio', icon: Wallet },
-  { path: '/watchlist', label: 'Watchlist', icon: Eye },
-  { path: '/floorsheet', label: 'Floorsheet', icon: FileText },
-  { path: '/transactions', label: 'Transactions', icon: History },
-  { path: '/alerts', label: 'Alerts', icon: Bell },
-  { path: '/backtesting', label: 'Backtesting', icon: FlaskConical },
-  { path: '/data', label: 'Data', icon: Database },
-  { path: '/settings', label: 'Settings', icon: Settings },
+  { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
+  { path: '/stocks', icon: TrendingUp, label: 'Stocks' },
+  { path: '/screener', icon: Search, label: 'Screener' },
+  { path: '/heatmap', icon: BarChart3, label: 'Heatmap' },
+  { path: '/watchlist', icon: Eye, label: 'Watchlist' },
+  { path: '/portfolio', icon: PieChart, label: 'Portfolio' },
+  { path: '/backtest', icon: History, label: 'Backtest' },
+  { path: '/dividends', icon: Calendar, label: 'Dividends' },
+  { path: '/insights', icon: Info, label: 'Insights' },
+  { path: '/ai', icon: Cpu, label: 'AI Advisor' },
 ];
 
-export default function Sidebar({ onLogout, marketOpen, onExpandChange }: SidebarProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
+const bottomItems = [
+  { path: '/settings', icon: Settings, label: 'Settings' },
+];
 
-  const handleMouseEnter = () => {
-    setIsExpanded(true);
-    onExpandChange?.(true);
-  };
-
-  const handleMouseLeave = () => {
-    setIsExpanded(false);
-    onExpandChange?.(false);
-  };
+export default function Sidebar({ marketOpen }: { marketOpen: boolean }) {
+  const [expanded, setExpanded] = useState(false);
 
   return (
-    <>
-      <aside 
-        className={`fixed left-0 top-0 h-screen bg-bg-secondary border-r border-border flex flex-col transition-all duration-300 ease-in-out z-40 ${
-          isExpanded ? 'w-56' : 'w-14'
-        }`}
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
-      >
-        {/* Logo */}
-        <div className="p-2 border-b border-border flex items-center justify-center h-14">
-          <Activity className={`w-6 h-6 text-accent flex-shrink-0 transition-transform ${isExpanded ? 'scale-110' : 'scale-90'}`} />
-          {isExpanded && (
-            <h1 className="ml-2 text-lg font-bold text-accent whitespace-nowrap animate-fade-in">
-              NEPSE
-            </h1>
-          )}
+    <aside
+      className="sidebar"
+      onMouseEnter={() => setExpanded(true)}
+      onMouseLeave={() => setExpanded(false)}
+    >
+      {/* Logo */}
+      <div className="sidebar-logo">
+        <span className="logo-icon">N</span>
+        {expanded && <span className="logo-text">NEPSE</span>}
+      </div>
+
+      {/* Market Status */}
+      <div className="market-status">
+        <div className={`live-indicator ${!marketOpen ? 'closed' : ''}`}>
+          <span className="live-dot"></span>
+          {expanded && (marketOpen ? 'Market Open' : 'Market Closed')}
         </div>
+      </div>
 
-        {/* Market Status */}
-        <div className="py-2 flex justify-center border-b border-border">
-          <div className={`flex items-center gap-2 text-xs ${marketOpen ? 'text-gain' : 'text-text-secondary'}`}>
-            <span className={`w-2 h-2 rounded-full flex-shrink-0 ${marketOpen ? 'bg-gain' : 'bg-text-secondary'} ${marketOpen ? 'animate-pulse' : ''}`} />
-            {isExpanded && (
-              <span className="whitespace-nowrap animate-fade-in">
-                {marketOpen ? 'Market Open' : 'Market Closed'}
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* Navigation */}
-        <nav className="flex-1 flex flex-col py-2 overflow-y-auto">
-          {navItems.map((item) => (
-            <NavLink
-              key={item.path}
-              to={item.path}
-              className={({ isActive }) =>
-                `flex items-center py-2.5 mx-1.5 rounded-lg transition-all duration-200 ${
-                  isActive
-                    ? 'bg-accent text-bg-primary'
-                    : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
-                } ${isExpanded ? 'px-3 justify-start gap-3' : 'px-0 justify-center'}`
-              }
-              title={!isExpanded ? item.label : undefined}
-            >
-              <item.icon className={`w-5 h-5 flex-shrink-0 ${isExpanded ? '' : 'mx-auto'}`} />
-              {isExpanded && (
-                <span className="text-sm font-medium whitespace-nowrap animate-fade-in">
-                  {item.label}
-                </span>
-              )}
-            </NavLink>
-          ))}
-        </nav>
-
-        {/* Logout */}
-        <div className="p-2 border-t border-border">
-          <button
-            onClick={onLogout}
-            className={`flex items-center text-text-secondary hover:text-loss transition-colors rounded-lg hover:bg-bg-tertiary w-full ${
-              isExpanded ? 'px-3 py-2 justify-start gap-3' : 'p-2 justify-center'
-            }`}
-            title={!isExpanded ? 'Logout' : undefined}
+      {/* Navigation */}
+      <nav className="sidebar-nav">
+        {navItems.map((item) => (
+          <NavLink
+            key={item.path}
+            to={item.path}
+            className={({ isActive }) =>
+              `nav-item ${isActive ? 'active' : ''}`
+            }
+            title={item.label}
           >
-            <LogOut className="w-5 h-5 flex-shrink-0" />
-            {isExpanded && <span className="text-sm animate-fade-in">Logout</span>}
-          </button>
-        </div>
-      </aside>
-      
-      {/* CSS Animation */}
+            <item.icon size={18} />
+            {expanded && <span className="nav-label">{item.label}</span>}
+          </NavLink>
+        ))}
+      </nav>
+
+      {/* Bottom Navigation */}
+      <div className="sidebar-bottom">
+        {bottomItems.map((item) => (
+          <NavLink
+            key={item.path}
+            to={item.path}
+            className={({ isActive }) =>
+              `nav-item ${isActive ? 'active' : ''}`
+            }
+            title={item.label}
+          >
+            <item.icon size={18} />
+            {expanded && <span className="nav-label">{item.label}</span>}
+          </NavLink>
+        ))}
+      </div>
+
       <style>{`
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateX(-10px); }
-          to { opacity: 1; transform: translateX(0); }
+        .sidebar {
+          position: fixed;
+          left: 0;
+          top: 0;
+          bottom: 0;
+          width: 56px;
+          background: var(--bg-secondary);
+          border-right: 1px solid var(--border);
+          display: flex;
+          flex-direction: column;
+          z-index: 100;
+          transition: width 0.15s ease;
+          overflow: hidden;
         }
-        .animate-fade-in {
-          animation: fadeIn 0.2s ease-out forwards;
+
+        .sidebar:hover {
+          width: 180px;
+        }
+
+        .sidebar-logo {
+          height: 36px;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 0 14px;
+          border-bottom: 1px solid var(--border);
+          flex-shrink: 0;
+        }
+
+        .logo-icon {
+          width: 28px;
+          height: 28px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: var(--accent);
+          color: #000;
+          font-family: 'JetBrains Mono', monospace;
+          font-weight: 700;
+          font-size: 0.9rem;
+          flex-shrink: 0;
+        }
+
+        .logo-text {
+          font-family: 'JetBrains Mono', monospace;
+          font-weight: 600;
+          font-size: 0.9rem;
+          letter-spacing: 1px;
+          white-space: nowrap;
+        }
+
+        .market-status {
+          padding: 8px;
+        }
+
+        .live-indicator {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 0.68rem;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          color: var(--gain);
+        }
+
+        .live-indicator.closed {
+          color: var(--text-muted);
+        }
+
+        .live-indicator.closed .live-dot {
+          background: var(--text-muted);
+          animation: none;
+        }
+
+        .live-dot {
+          width: 5px;
+          height: 5px;
+          background-color: var(--gain);
+          animation: pulse-dot 1.5s infinite;
+          flex-shrink: 0;
+        }
+
+        .sidebar-nav {
+          flex: 1;
+          padding: 8px 0;
+          overflow-y: auto;
+          overflow-x: hidden;
+        }
+
+        .nav-item {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 10px 14px;
+          color: var(--text-muted);
+          text-decoration: none;
+          transition: all 0.1s ease;
+          white-space: nowrap;
+        }
+
+        .nav-item:hover {
+          color: var(--text-primary);
+          background: var(--bg-hover);
+        }
+
+        .nav-item.active {
+          color: var(--accent);
+          background: var(--bg-tertiary);
+        }
+
+        .nav-item svg {
+          flex-shrink: 0;
+        }
+
+        .nav-label {
+          font-size: 0.85rem;
+        }
+
+        .sidebar-bottom {
+          padding: 8px 0;
+          border-top: 1px solid var(--border);
         }
       `}</style>
-    </>
+    </aside>
   );
 }

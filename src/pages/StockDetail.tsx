@@ -1,16 +1,9 @@
 import { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { 
-  ArrowLeft, TrendingUp, TrendingDown, RefreshCw, 
-  BarChart3, Activity, Target, Brain, Calendar,
-  ArrowUp, ArrowDown, Minus, AlertCircle
-} from 'lucide-react';
-import { 
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, 
-  ResponsiveContainer, Area, AreaChart, ReferenceLine
-} from 'recharts';
+import { useParams, Link, useNavigate } from 'react-router-dom';
+import { ArrowLeft, TrendingUp, TrendingDown, RefreshCw, AlertCircle, ArrowUp, ArrowDown } from 'lucide-react';
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 
-const API_URL = import.meta.env.VITE_API_URL || '/api';
+const API_URL = import.meta.env.VITE_API_URL || 'https://frontend-eight-tan-70.vercel.app/api';
 
 interface Stock {
   symbol: string;
@@ -21,8 +14,6 @@ interface Stock {
   openPrice: number;
   highPrice: number;
   lowPrice: number;
-  closePrice: number;
-  sector?: string;
 }
 
 interface PriceHistory {
@@ -38,21 +29,9 @@ interface TechnicalAnalysis {
   symbol: string;
   current_price: number;
   rsi: number;
-  macd: {
-    macd: number;
-    signal: number;
-    histogram: number;
-  };
-  sma: {
-    sma_20: number;
-    sma_50: number;
-    sma_200: number;
-  };
-  bollinger_bands: {
-    upper: number;
-    middle: number;
-    lower: number;
-  };
+  macd: { macd: number; signal: number; histogram: number };
+  sma: { sma_20: number; sma_50: number; sma_200: number };
+  bollinger_bands: { upper: number; middle: number; lower: number };
   trend: string;
   signal: string;
 }
@@ -64,23 +43,17 @@ interface Prediction {
   current_price: number;
   predicted_price?: number;
   change_percent?: number;
-  prob_up?: number;
-  prob_down?: number;
 }
 
 type TimeRange = '1W' | '1M' | '3M' | '6M' | '1Y' | 'ALL';
 
 const timeRangeDays: Record<TimeRange, number> = {
-  '1W': 7,
-  '1M': 30,
-  '3M': 90,
-  '6M': 180,
-  '1Y': 365,
-  'ALL': 1000,
+  '1W': 7, '1M': 30, '3M': 90, '6M': 180, '1Y': 365, 'ALL': 1000,
 };
 
 export default function StockDetail() {
   const { symbol } = useParams<{ symbol: string }>();
+  const navigate = useNavigate();
   const [stock, setStock] = useState<Stock | null>(null);
   const [history, setHistory] = useState<PriceHistory[]>([]);
   const [analysis, setAnalysis] = useState<TechnicalAnalysis | null>(null);
@@ -90,47 +63,32 @@ export default function StockDetail() {
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
-    if (symbol) {
-      loadData();
-    }
+    if (symbol) loadData();
   }, [symbol, timeRange]);
 
   const loadData = async (isRefresh = false) => {
     if (!symbol) return;
-    
     try {
       if (isRefresh) setRefreshing(true);
       
-      const [stockData, historyData, analysisData, predictionData] = await Promise.all([
-        fetch(`${API_URL}/stocks`).then(r => r.json()).then(stocks => stocks.find((s: any) => s.symbol === symbol?.toUpperCase())).catch(() => null),
-        fetch(`${API_URL}/history?symbol=${symbol}&days=${timeRangeDays[timeRange]}`).then(r => r.json()).catch(() => ({ history: [] })),
+      const [allStocks, historyData, analysisData, predictionData] = await Promise.all([
+        fetch(`${API_URL}/stocks`).then(r => r.json()).catch(() => []),
+        fetch(`${API_URL}/history?symbol=${symbol}&days=${timeRangeDays[timeRange]}`).then(r => r.json()).catch(() => null),
         fetch(`${API_URL}/analysis?symbol=${symbol}`).then(r => r.json()).catch(() => null),
         fetch(`${API_URL}/predict?symbol=${symbol}`).then(r => r.json()).catch(() => null),
       ]);
 
-      if (stockData && !stockData.detail) {
-        setStock(stockData);
+      const foundStock = Array.isArray(allStocks) ? allStocks.find((s: any) => s.symbol === symbol?.toUpperCase()) : null;
+      if (foundStock) setStock(foundStock);
+      
+      if (historyData?.history) {
+        setHistory(historyData.history.map((h: any) => ({
+          date: h.date, open: h.open, high: h.high, low: h.low, close: h.close, volume: h.volume,
+        })).reverse());
       }
       
-      if (historyData && historyData.history) {
-        const formattedHistory = historyData.history.map((h: any) => ({
-          date: h.date || h.timestamp,
-          open: h.open || h.openPrice || h.close,
-          high: h.high || h.highPrice || h.close,
-          low: h.low || h.lowPrice || h.close,
-          close: h.close || h.lastTradedPrice,
-          volume: h.volume || 0,
-        })).reverse();
-        setHistory(formattedHistory);
-      }
-      
-      if (analysisData && !analysisData.error) {
-        setAnalysis(analysisData);
-      }
-      
-      if (predictionData && !predictionData.error) {
-        setPrediction(predictionData);
-      }
+      if (analysisData && !analysisData.error) setAnalysis(analysisData);
+      if (predictionData && !predictionData.error) setPrediction(predictionData);
     } catch (error) {
       console.error('Error loading stock data:', error);
     } finally {
@@ -139,464 +97,527 @@ export default function StockDetail() {
     }
   };
 
-  const getRSIColor = (rsi: number) => {
-    if (rsi >= 70) return 'text-loss';
-    if (rsi <= 30) return 'text-gain';
-    return 'text-text-primary';
-  };
-
-  const getRSILabel = (rsi: number) => {
-    if (rsi >= 70) return 'Overbought';
-    if (rsi <= 30) return 'Oversold';
-    return 'Neutral';
-  };
-
-  const getSignalColor = (signal: string) => {
-    switch (signal?.toLowerCase()) {
-      case 'buy': return 'text-gain';
-      case 'sell': return 'text-loss';
-      default: return 'text-text-secondary';
-    }
-  };
-
-  const formatNumber = (num: number, decimals = 2) => {
-    return num?.toFixed(decimals) || '0';
-  };
-
   const formatDate = (dateStr: string) => {
     try {
-      const date = new Date(dateStr);
-      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    } catch {
-      return dateStr;
-    }
+      return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    } catch { return dateStr; }
   };
 
   const chartData = history.map(h => ({
     date: formatDate(h.date),
+    rawDate: h.date,
     price: h.close,
     high: h.high,
     low: h.low,
-    volume: h.volume,
   }));
 
-  const priceChange = stock?.percentageChange || 0;
-  const isPositive = priceChange >= 0;
+  const isPositive = (stock?.percentageChange || 0) >= 0;
+  const trendColor = analysis?.trend === 'UPTREND' ? 'text-gain' : analysis?.trend === 'DOWNTREND' ? 'text-loss' : 'text-secondary';
+  const signalColor = analysis?.signal === 'BUY' ? 'text-gain' : analysis?.signal === 'SELL' ? 'text-loss' : 'text-secondary';
+  const chartColor = isPositive ? '#00ff41' : '#ff3333';
 
   return (
-    <div className="space-y-4">
+    <div className="stock-detail">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Link 
-            to="/stocks"
-            className="p-2 text-text-secondary hover:text-accent hover:bg-bg-secondary rounded-lg transition-colors"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </Link>
-          {stock && (
-            <div>
-              <div className="flex items-center gap-3">
-                <h1 className="text-2xl font-bold text-text-primary">{stock.symbol}</h1>
-                <span className="text-text-secondary text-sm">{stock.name}</span>
-                {stock.sector && (
-                  <span className="px-2 py-0.5 bg-bg-tertiary rounded text-xs text-text-secondary">
-                    {stock.sector}
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center gap-3 mt-1">
-                <span className="text-2xl font-bold text-text-primary">
-                  Rs. {stock.lastTradedPrice}
-                </span>
-                <span className={`flex items-center gap-1 text-lg font-semibold ${isPositive ? 'text-gain' : 'text-loss'}`}>
-                  {isPositive ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
-                  {isPositive ? '+' : ''}{priceChange.toFixed(2)}%
-                </span>
-              </div>
-            </div>
-          )}
+      <div className="detail-header">
+        <button onClick={() => navigate(-1)} className="back-btn">
+          <ArrowLeft size={16} />
+        </button>
+        
+        <div className="stock-info">
+          <div className="stock-symbol-large">{stock?.symbol || symbol}</div>
+          <div className="stock-name-large">{stock?.name || 'Loading...'}</div>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="flex bg-bg-secondary border border-border rounded-lg overflow-hidden">
+
+        {stock && (
+          <div className="stock-price-display">
+            <span className="current-price">Rs. {stock.lastTradedPrice?.toLocaleString()}</span>
+            <span className={`price-change ${isPositive ? 'text-gain' : 'text-loss'}`}>
+              {isPositive ? '+' : ''}{stock.percentageChange?.toFixed(2)}%
+            </span>
+          </div>
+        )}
+
+        <div className="header-actions">
+          <div className="time-range-group">
             {(['1W', '1M', '3M', '6M', '1Y', 'ALL'] as TimeRange[]).map((range) => (
               <button
                 key={range}
                 onClick={() => setTimeRange(range)}
-                className={`px-3 py-1.5 text-xs font-medium transition-colors ${
-                  timeRange === range
-                    ? 'bg-accent text-bg-primary'
-                    : 'text-text-secondary hover:text-text-primary hover:bg-bg-tertiary'
-                }`}
+                className={`time-range-btn ${timeRange === range ? 'active' : ''}`}
               >
                 {range}
               </button>
             ))}
           </div>
-          <button 
-            onClick={() => loadData(true)} 
-            disabled={refreshing}
-            className="p-2 text-text-secondary hover:text-accent rounded-lg hover:bg-bg-secondary transition-colors"
-          >
-            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+          <button onClick={() => loadData(true)} disabled={refreshing} className="btn btn-ghost">
+            <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
           </button>
         </div>
       </div>
 
-      {/* Price Chart */}
-      <div className="bg-bg-secondary border border-border rounded-xl p-4">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-text-primary flex items-center gap-2">
-            <BarChart3 className="w-5 h-5 text-accent" />
-            Price Chart
-          </h2>
-          {analysis && (
-            <span className={`text-sm font-medium ${getSignalColor(analysis.signal)}`}>
-              {analysis.signal?.toUpperCase()} Signal
-            </span>
-          )}
+      {/* Chart */}
+      <div className="chart-section">
+        <div className="card">
+          <div className="card-header">
+            <span>PRICE CHART</span>
+            {analysis && (
+              <span className={`signal-badge ${signalColor}`}>
+                {analysis.signal} SIGNAL
+              </span>
+            )}
+          </div>
+          <div className="chart-container">
+            {loading ? (
+              <div className="loading-container"><div className="loading-spinner"></div></div>
+            ) : chartData.length === 0 ? (
+              <div className="empty-state">
+                <AlertCircle size={32} />
+                <p>No historical data available</p>
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height={320}>
+                <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor={chartColor} stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor={chartColor} stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <XAxis dataKey="date" stroke="#333" tick={{ fill: '#666', fontSize: 10 }} axisLine={{ stroke: '#222' }} tickLine={false} />
+                  <YAxis stroke="#333" tick={{ fill: '#666', fontSize: 10 }} axisLine={{ stroke: '#222' }} tickLine={false} domain={['auto', 'auto']} tickFormatter={(v) => `Rs ${v}`} width={70} />
+                  <Tooltip 
+                    contentStyle={{ background: '#0a0a0a', border: '1px solid #222', fontSize: 12 }}
+                    formatter={(value: number) => [`Rs. ${value.toLocaleString()}`, 'Price']}
+                  />
+                  {analysis?.bollinger_bands && (
+                    <>
+                      <ReferenceLine y={analysis.bollinger_bands.upper} stroke="#333" strokeDasharray="3 3" />
+                      <ReferenceLine y={analysis.bollinger_bands.lower} stroke="#333" strokeDasharray="3 3" />
+                    </>
+                  )}
+                  <Area type="monotone" dataKey="price" stroke={chartColor} strokeWidth={1.5} fill="url(#chartGradient)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
+          </div>
         </div>
-        {loading ? (
-          <div className="h-80 flex items-center justify-center text-text-secondary">
-            Loading chart...
-          </div>
-        ) : chartData.length === 0 ? (
-          <div className="h-80 flex flex-col items-center justify-center text-text-secondary">
-            <AlertCircle className="w-8 h-8 mb-2" />
-            <p>No historical data available</p>
-            <p className="text-xs mt-1">Try collecting data from the Data page</p>
-          </div>
-        ) : (
-          <ResponsiveContainer width="100%" height={320}>
-            <AreaChart data={chartData}>
-              <defs>
-                <linearGradient id="priceGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={isPositive ? '#22c55e' : '#ef4444'} stopOpacity={0.3} />
-                  <stop offset="100%" stopColor={isPositive ? '#22c55e' : '#ef4444'} stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-              <XAxis 
-                dataKey="date" 
-                stroke="#666" 
-                tick={{ fill: '#888', fontSize: 11 }}
-                interval="preserveStartEnd"
-              />
-              <YAxis 
-                stroke="#666" 
-                tick={{ fill: '#888', fontSize: 11 }}
-                domain={['auto', 'auto']}
-                tickFormatter={(v) => `Rs.${v}`}
-              />
-              <Tooltip 
-                contentStyle={{ 
-                  backgroundColor: '#1a1a1a', 
-                  border: '1px solid #333',
-                  borderRadius: '8px',
-                  color: '#e5e5e5'
-                }}
-                formatter={(value: number) => [`Rs. ${value.toFixed(2)}`, 'Price']}
-              />
-              {analysis?.bollinger_bands && (
-                <>
-                  <ReferenceLine y={analysis.bollinger_bands.upper} stroke="#666" strokeDasharray="3 3" />
-                  <ReferenceLine y={analysis.bollinger_bands.lower} stroke="#666" strokeDasharray="3 3" />
-                </>
-              )}
-              <Area
-                type="monotone"
-                dataKey="price"
-                stroke={isPositive ? '#22c55e' : '#ef4444'}
-                strokeWidth={2}
-                fill="url(#priceGradient)"
-              />
-            </AreaChart>
-          </ResponsiveContainer>
-        )}
       </div>
 
-      {/* Key Statistics */}
+      {/* Stats Grid */}
       {stock && (
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-          <div className="bg-bg-secondary border border-border rounded-xl p-3">
-            <div className="text-text-secondary text-xs mb-1">Open</div>
-            <div className="text-text-primary font-semibold">Rs. {stock.openPrice || stock.closePrice || 0}</div>
+        <div className="stats-grid">
+          <div className="stat-card">
+            <span className="stat-label">OPEN</span>
+            <span className="stat-value">Rs. {stock.openPrice?.toLocaleString()}</span>
           </div>
-          <div className="bg-bg-secondary border border-border rounded-xl p-3">
-            <div className="text-text-secondary text-xs mb-1">High</div>
-            <div className="text-gain font-semibold">Rs. {stock.highPrice || 0}</div>
+          <div className="stat-card">
+            <span className="stat-label">HIGH</span>
+            <span className="stat-value text-gain">Rs. {stock.highPrice?.toLocaleString()}</span>
           </div>
-          <div className="bg-bg-secondary border border-border rounded-xl p-3">
-            <div className="text-text-secondary text-xs mb-1">Low</div>
-            <div className="text-loss font-semibold">Rs. {stock.lowPrice || 0}</div>
+          <div className="stat-card">
+            <span className="stat-label">LOW</span>
+            <span className="stat-value text-loss">Rs. {stock.lowPrice?.toLocaleString()}</span>
           </div>
-          <div className="bg-bg-secondary border border-border rounded-xl p-3">
-            <div className="text-text-secondary text-xs mb-1">Close</div>
-            <div className="text-text-primary font-semibold">Rs. {stock.closePrice || stock.lastTradedPrice || 0}</div>
-          </div>
-          <div className="bg-bg-secondary border border-border rounded-xl p-3">
-            <div className="text-text-secondary text-xs mb-1">Volume</div>
-            <div className="text-text-primary font-semibold">{stock.volume?.toLocaleString() || 0}</div>
-          </div>
-          <div className="bg-bg-secondary border border-border rounded-xl p-3">
-            <div className="text-text-secondary text-xs mb-1">Change</div>
-            <div className={`font-semibold ${isPositive ? 'text-gain' : 'text-loss'}`}>
-              {isPositive ? '+' : ''}{priceChange.toFixed(2)}%
-            </div>
+          <div className="stat-card">
+            <span className="stat-label">VOLUME</span>
+            <span className="stat-value">{(stock.volume / 1000).toFixed(1)}K</span>
           </div>
         </div>
       )}
 
-      {/* Technical Analysis & ML Prediction */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Technical Indicators */}
-        <div className="bg-bg-secondary border border-border rounded-xl p-4">
-          <h2 className="text-lg font-semibold text-text-primary flex items-center gap-2 mb-4">
-            <Activity className="w-5 h-5 text-accent" />
-            Technical Analysis
-          </h2>
-          {loading ? (
-            <div className="text-text-secondary py-4">Loading analysis...</div>
-          ) : !analysis ? (
-            <div className="text-text-secondary py-4">
-              <AlertCircle className="w-6 h-6 mx-auto mb-2" />
-              <p className="text-center text-sm">Analysis not available</p>
-              <p className="text-center text-xs mt-1">Collect historical data first</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {/* RSI */}
-              <div className="flex items-center justify-between p-3 bg-bg-tertiary rounded-lg">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-bg-secondary rounded-lg flex items-center justify-center">
-                    <Target className="w-5 h-5 text-accent" />
-                  </div>
-                  <div>
-                    <div className="text-text-primary font-medium">RSI (14)</div>
-                    <div className="text-text-secondary text-xs">{getRSILabel(analysis.rsi)}</div>
-                  </div>
+      {/* Analysis & Prediction Grid */}
+      <div className="analysis-grid">
+        {/* Technical Analysis */}
+        <div className="card">
+          <div className="card-header">TECHNICAL INDICATORS</div>
+          <div className="card-body">
+            {loading ? (
+              <div className="loading-container"><div className="loading-spinner"></div></div>
+            ) : !analysis ? (
+              <div className="empty-state"><p>Analysis unavailable</p></div>
+            ) : (
+              <div className="indicators-grid">
+                {/* RSI */}
+                <div className="indicator-row">
+                  <span className="indicator-label">RSI (14)</span>
+                  <span className={`indicator-value ${
+                    analysis.rsi >= 70 ? 'text-loss' : analysis.rsi <= 30 ? 'text-gain' : ''
+                  }`}>
+                    {analysis.rsi.toFixed(1)}
+                  </span>
                 </div>
-                <div className={`text-2xl font-bold ${getRSIColor(analysis.rsi)}`}>
-                  {formatNumber(analysis.rsi, 1)}
+                
+                {/* MACD */}
+                <div className="indicator-row">
+                  <span className="indicator-label">MACD</span>
+                  <span className="indicator-value">{analysis.macd.macd.toFixed(2)}</span>
                 </div>
-              </div>
+                <div className="indicator-row sub">
+                  <span className="indicator-label">Signal</span>
+                  <span className="indicator-value">{analysis.macd.signal.toFixed(2)}</span>
+                </div>
+                <div className="indicator-row sub">
+                  <span className="indicator-label">Histogram</span>
+                  <span className={`indicator-value ${analysis.macd.histogram >= 0 ? 'text-gain' : 'text-loss'}`}>
+                    {analysis.macd.histogram.toFixed(2)}
+                  </span>
+                </div>
 
-              {/* MACD */}
-              <div className="p-3 bg-bg-tertiary rounded-lg">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-10 h-10 bg-bg-secondary rounded-lg flex items-center justify-center">
-                    <Activity className="w-5 h-5 text-accent" />
-                  </div>
-                  <div className="text-text-primary font-medium">MACD</div>
+                {/* SMA */}
+                <div className="indicator-row">
+                  <span className="indicator-label">SMA 20</span>
+                  <span className="indicator-value">Rs. {analysis.sma.sma_20.toFixed(2)}</span>
                 </div>
-                <div className="grid grid-cols-3 gap-2 text-center">
-                  <div>
-                    <div className="text-text-secondary text-xs">MACD</div>
-                    <div className="text-text-primary font-medium">{formatNumber(analysis.macd?.macd || 0)}</div>
-                  </div>
-                  <div>
-                    <div className="text-text-secondary text-xs">Signal</div>
-                    <div className="text-text-primary font-medium">{formatNumber(analysis.macd?.signal || 0)}</div>
-                  </div>
-                  <div>
-                    <div className="text-text-secondary text-xs">Histogram</div>
-                    <div className={`font-medium ${(analysis.macd?.histogram || 0) >= 0 ? 'text-gain' : 'text-loss'}`}>
-                      {formatNumber(analysis.macd?.histogram || 0)}
-                    </div>
-                  </div>
+                <div className="indicator-row">
+                  <span className="indicator-label">SMA 50</span>
+                  <span className="indicator-value">Rs. {analysis.sma.sma_50.toFixed(2)}</span>
                 </div>
-              </div>
 
-              {/* SMA */}
-              <div className="p-3 bg-bg-tertiary rounded-lg">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-10 h-10 bg-bg-secondary rounded-lg flex items-center justify-center">
-                    <BarChart3 className="w-5 h-5 text-accent" />
-                  </div>
-                  <div className="text-text-primary font-medium">Simple Moving Avg</div>
+                {/* Bollinger */}
+                <div className="indicator-row">
+                  <span className="indicator-label">BB Upper</span>
+                  <span className="indicator-value">Rs. {analysis.bollinger_bands.upper.toFixed(2)}</span>
                 </div>
-                <div className="grid grid-cols-3 gap-2 text-center">
-                  <div>
-                    <div className="text-text-secondary text-xs">SMA 20</div>
-                    <div className="text-text-primary font-medium">Rs. {formatNumber(analysis.sma?.sma_20 || 0)}</div>
-                  </div>
-                  <div>
-                    <div className="text-text-secondary text-xs">SMA 50</div>
-                    <div className="text-text-primary font-medium">Rs. {formatNumber(analysis.sma?.sma_50 || 0)}</div>
-                  </div>
-                  <div>
-                    <div className="text-text-secondary text-xs">SMA 200</div>
-                    <div className="text-text-primary font-medium">Rs. {formatNumber(analysis.sma?.sma_200 || 0)}</div>
-                  </div>
+                <div className="indicator-row">
+                  <span className="indicator-label">BB Lower</span>
+                  <span className="indicator-value">Rs. {analysis.bollinger_bands.lower.toFixed(2)}</span>
                 </div>
-              </div>
 
-              {/* Bollinger Bands */}
-              <div className="p-3 bg-bg-tertiary rounded-lg">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-10 h-10 bg-bg-secondary rounded-lg flex items-center justify-center">
-                    <BarChart3 className="w-5 h-5 text-accent" />
-                  </div>
-                  <div className="text-text-primary font-medium">Bollinger Bands</div>
-                </div>
-                <div className="grid grid-cols-3 gap-2 text-center">
-                  <div>
-                    <div className="text-text-secondary text-xs">Upper</div>
-                    <div className="text-text-primary font-medium">Rs. {formatNumber(analysis.bollinger_bands?.upper || 0)}</div>
-                  </div>
-                  <div>
-                    <div className="text-text-secondary text-xs">Middle</div>
-                    <div className="text-text-primary font-medium">Rs. {formatNumber(analysis.bollinger_bands?.middle || 0)}</div>
-                  </div>
-                  <div>
-                    <div className="text-text-secondary text-xs">Lower</div>
-                    <div className="text-text-primary font-medium">Rs. {formatNumber(analysis.bollinger_bands?.lower || 0)}</div>
-                  </div>
+                {/* Trend */}
+                <div className="indicator-row trend-row">
+                  <span className="indicator-label">TREND</span>
+                  <span className={`trend-badge ${trendColor}`}>
+                    {analysis.trend === 'UPTREND' && <TrendingUp size={14} />}
+                    {analysis.trend === 'DOWNTREND' && <TrendingDown size={14} />}
+                    {analysis.trend}
+                  </span>
                 </div>
               </div>
-
-              {/* Trend */}
-              <div className="flex items-center justify-between p-3 bg-bg-tertiary rounded-lg">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-bg-secondary rounded-lg flex items-center justify-center">
-                    {analysis.trend === 'UPTREND' ? (
-                      <TrendingUp className="w-5 h-5 text-gain" />
-                    ) : analysis.trend === 'DOWNTREND' ? (
-                      <TrendingDown className="w-5 h-5 text-loss" />
-                    ) : (
-                      <Minus className="w-5 h-5 text-text-secondary" />
-                    )}
-                  </div>
-                  <div className="text-text-primary font-medium">Trend</div>
-                </div>
-                <div className={`font-semibold ${
-                  analysis.trend === 'UPTREND' ? 'text-gain' : 
-                  analysis.trend === 'DOWNTREND' ? 'text-loss' : 'text-text-secondary'
-                }`}>
-                  {analysis.trend || 'N/A'}
-                </div>
-              </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         {/* ML Prediction */}
-        <div className="bg-bg-secondary border border-border rounded-xl p-4">
-          <h2 className="text-lg font-semibold text-text-primary flex items-center gap-2 mb-4">
-            <Brain className="w-5 h-5 text-accent" />
-            ML Prediction
-          </h2>
-          {loading ? (
-            <div className="text-text-secondary py-4">Loading prediction...</div>
-          ) : !prediction ? (
-            <div className="text-text-secondary py-4">
-              <AlertCircle className="w-6 h-6 mx-auto mb-2" />
-              <p className="text-center text-sm">Prediction not available</p>
-              <p className="text-center text-xs mt-1">Train the model from the Data page</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {/* Prediction Result */}
-              <div className={`p-6 rounded-xl border-2 ${
-                prediction.prediction === 'UP' ? 'border-gain/30 bg-gain/10' :
-                prediction.prediction === 'DOWN' ? 'border-loss/30 bg-loss/10' :
-                'border-border bg-bg-tertiary'
-              }`}>
-                <div className="text-center">
-                  <div className={`text-4xl font-bold mb-2 ${
-                    prediction.prediction === 'UP' ? 'text-gain' :
-                    prediction.prediction === 'DOWN' ? 'text-loss' :
-                    'text-text-secondary'
+        <div className="card">
+          <div className="card-header">ML PREDICTION</div>
+          <div className="card-body">
+            {loading ? (
+              <div className="loading-container"><div className="loading-spinner"></div></div>
+            ) : !prediction ? (
+              <div className="empty-state"><p>Prediction unavailable</p></div>
+            ) : (
+              <div className="prediction-section">
+                <div className={`prediction-icon ${prediction.prediction === 'UP' ? 'up' : prediction.prediction === 'DOWN' ? 'down' : 'neutral'}`}>
+                  {prediction.prediction === 'UP' && <ArrowUp size={32} />}
+                  {prediction.prediction === 'DOWN' && <ArrowDown size={32} />}
+                </div>
+                <div className="prediction-text">
+                  <span className={`prediction-label ${
+                    prediction.prediction === 'UP' ? 'text-gain' : 
+                    prediction.prediction === 'DOWN' ? 'text-loss' : 'text-secondary'
                   }`}>
-                    {prediction.prediction === 'UP' && <ArrowUp className="w-12 h-12 mx-auto" />}
-                    {prediction.prediction === 'DOWN' && <ArrowDown className="w-12 h-12 mx-auto" />}
-                    {prediction.prediction === 'HOLD' && <Minus className="w-12 h-12 mx-auto" />}
-                  </div>
-                  <div className="text-2xl font-bold text-text-primary">
-                    {prediction.prediction === 'UP' ? 'Bullish' :
-                     prediction.prediction === 'DOWN' ? 'Bearish' :
-                     'Neutral'}
-                  </div>
-                  <div className="text-text-secondary text-sm mt-1">
-                    Next Day Prediction
-                  </div>
+                    {prediction.prediction === 'UP' ? 'BULLISH' : prediction.prediction === 'DOWN' ? 'BEARISH' : 'NEUTRAL'}
+                  </span>
                 </div>
-              </div>
-
-              {/* Confidence */}
-              <div className="p-4 bg-bg-tertiary rounded-xl">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-text-secondary">Confidence</span>
-                  <span className="text-text-primary font-semibold">{(prediction.confidence * 100).toFixed(1)}%</span>
-                </div>
-                <div className="h-2 bg-bg-secondary rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-accent rounded-full transition-all duration-500"
-                    style={{ width: `${prediction.confidence * 100}%` }}
-                  />
-                </div>
-              </div>
-
-              {/* Price Prediction */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="p-3 bg-bg-tertiary rounded-lg text-center">
-                  <div className="text-text-secondary text-xs mb-1">Current Price</div>
-                  <div className="text-text-primary font-semibold">Rs. {formatNumber(prediction.current_price)}</div>
+                <div className="confidence-bar">
+                  <div className="confidence-label">
+                    <span>Confidence</span>
+                    <span>{(prediction.confidence * 100).toFixed(1)}%</span>
+                  </div>
+                  <div className="confidence-track">
+                    <div className="confidence-fill" style={{ width: `${prediction.confidence * 100}%` }}></div>
+                  </div>
                 </div>
                 {prediction.predicted_price && (
-                  <div className="p-3 bg-bg-tertiary rounded-lg text-center">
-                    <div className="text-text-secondary text-xs mb-1">Predicted Price</div>
-                    <div className={`font-semibold ${
-                      (prediction.change_percent || 0) >= 0 ? 'text-gain' : 'text-loss'
-                    }`}>
-                      Rs. {formatNumber(prediction.predicted_price)}
+                  <div className="prediction-prices">
+                    <div className="pred-price">
+                      <span className="pred-label">Current</span>
+                      <span className="pred-value">Rs. {prediction.current_price.toLocaleString()}</span>
+                    </div>
+                    <div className="pred-price">
+                      <span className="pred-label">Predicted</span>
+                      <span className={`pred-value ${(prediction.change_percent || 0) >= 0 ? 'text-gain' : 'text-loss'}`}>
+                        Rs. {prediction.predicted_price.toLocaleString()}
+                      </span>
                     </div>
                   </div>
                 )}
-              </div>
-
-              {/* Probability */}
-              {(prediction.prob_up !== undefined || prediction.prob_down !== undefined) && (
-                <div className="p-4 bg-bg-tertiary rounded-xl">
-                  <div className="text-text-secondary text-sm mb-2">Probability</div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="text-center">
-                      <div className="text-gain font-semibold">{((prediction.prob_up || 0) * 100).toFixed(1)}%</div>
-                      <div className="text-text-secondary text-xs">Up</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-loss font-semibold">{((prediction.prob_down || 0) * 100).toFixed(1)}%</div>
-                      <div className="text-text-secondary text-xs">Down</div>
-                    </div>
-                  </div>
+                <div className="prediction-disclaimer">
+                  ML predictions are for educational purposes only.
                 </div>
-              )}
-
-              {/* Expected Change */}
-              {prediction.change_percent !== undefined && (
-                <div className={`p-4 rounded-xl flex items-center justify-between ${
-                  prediction.change_percent >= 0 ? 'bg-gain/10' : 'bg-loss/10'
-                }`}>
-                  <div className="flex items-center gap-3">
-                    <Calendar className="w-5 h-5 text-text-secondary" />
-                    <span className="text-text-secondary">Expected Change</span>
-                  </div>
-                  <div className={`text-xl font-bold ${
-                    prediction.change_percent >= 0 ? 'text-gain' : 'text-loss'
-                  }`}>
-                    {prediction.change_percent >= 0 ? '+' : ''}{prediction.change_percent.toFixed(2)}%
-                  </div>
-                </div>
-              )}
-
-              {/* Disclaimer */}
-              <div className="text-xs text-text-secondary text-center p-3 bg-bg-tertiary rounded-lg">
-                ML predictions are for educational purposes only. Not financial advice.
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
+
+      <style>{`
+        .stock-detail {
+          max-width: 1400px;
+          margin: 0 auto;
+        }
+
+        .detail-header {
+          display: flex;
+          align-items: center;
+          gap: 16px;
+          margin-bottom: 16px;
+          flex-wrap: wrap;
+        }
+
+        .back-btn {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 32px;
+          height: 32px;
+          background: var(--bg-secondary);
+          border: 1px solid var(--border);
+          color: var(--text-secondary);
+          cursor: pointer;
+        }
+
+        .back-btn:hover {
+          background: var(--bg-tertiary);
+          color: var(--text-primary);
+        }
+
+        .stock-info {
+          flex: 1;
+        }
+
+        .stock-symbol-large {
+          font-family: 'JetBrains Mono', monospace;
+          font-size: 1.5rem;
+          font-weight: 700;
+        }
+
+        .stock-name-large {
+          font-size: 0.85rem;
+          color: var(--text-muted);
+        }
+
+        .stock-price-display {
+          text-align: right;
+        }
+
+        .current-price {
+          font-family: 'JetBrains Mono', monospace;
+          font-size: 1.3rem;
+          font-weight: 600;
+          display: block;
+        }
+
+        .price-change {
+          font-family: 'JetBrains Mono', monospace;
+          font-size: 0.9rem;
+        }
+
+        .header-actions {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .signal-badge {
+          font-size: 0.7rem;
+          font-weight: 600;
+          letter-spacing: 0.5px;
+        }
+
+        .chart-section {
+          margin-bottom: 16px;
+        }
+
+        .chart-container {
+          padding: 8px;
+        }
+
+        .stats-grid {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 8px;
+          margin-bottom: 16px;
+        }
+
+        .stat-card {
+          background: var(--bg-secondary);
+          border: 1px solid var(--border);
+          padding: 12px;
+        }
+
+        .stat-label {
+          display: block;
+          font-size: 0.68rem;
+          color: var(--text-muted);
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          margin-bottom: 4px;
+        }
+
+        .stat-value {
+          font-family: 'JetBrains Mono', monospace;
+          font-size: 1rem;
+          font-weight: 600;
+        }
+
+        .analysis-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 12px;
+        }
+
+        .indicators-grid {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+
+        .indicator-row {
+          display: flex;
+          justify-content: space-between;
+          padding: 8px 0;
+          border-bottom: 1px solid var(--border);
+        }
+
+        .indicator-row.sub {
+          padding-left: 16px;
+          background: var(--bg-tertiary);
+          margin: 0 -12px;
+          padding-right: 12px;
+        }
+
+        .indicator-label {
+          font-size: 0.75rem;
+          color: var(--text-muted);
+        }
+
+        .indicator-value {
+          font-family: 'JetBrains Mono', monospace;
+          font-size: 0.85rem;
+          font-weight: 500;
+        }
+
+        .trend-row {
+          border-bottom: none;
+        }
+
+        .trend-badge {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          font-size: 0.75rem;
+          font-weight: 600;
+        }
+
+        .prediction-section {
+          text-align: center;
+        }
+
+        .prediction-icon {
+          width: 64px;
+          height: 64px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin: 0 auto 12px;
+        }
+
+        .prediction-icon.up {
+          background: var(--gain-bg);
+          color: var(--gain);
+        }
+
+        .prediction-icon.down {
+          background: var(--loss-bg);
+          color: var(--loss);
+        }
+
+        .prediction-icon.neutral {
+          background: var(--bg-tertiary);
+          color: var(--text-muted);
+        }
+
+        .prediction-label {
+          font-size: 1.5rem;
+          font-weight: 700;
+          letter-spacing: 1px;
+        }
+
+        .confidence-bar {
+          margin-top: 20px;
+        }
+
+        .confidence-label {
+          display: flex;
+          justify-content: space-between;
+          font-size: 0.75rem;
+          color: var(--text-muted);
+          margin-bottom: 6px;
+        }
+
+        .confidence-track {
+          height: 6px;
+          background: var(--bg-tertiary);
+        }
+
+        .confidence-fill {
+          height: 100%;
+          background: var(--accent);
+          transition: width 0.3s;
+        }
+
+        .prediction-prices {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 12px;
+          margin-top: 20px;
+        }
+
+        .pred-price {
+          padding: 12px;
+          background: var(--bg-tertiary);
+        }
+
+        .pred-label {
+          display: block;
+          font-size: 0.68rem;
+          color: var(--text-muted);
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          margin-bottom: 4px;
+        }
+
+        .pred-value {
+          font-family: 'JetBrains Mono', monospace;
+          font-size: 1rem;
+          font-weight: 600;
+        }
+
+        .prediction-disclaimer {
+          margin-top: 20px;
+          font-size: 0.68rem;
+          color: var(--text-muted);
+          text-align: center;
+        }
+
+        .loading-container {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 48px;
+        }
+
+        @media (max-width: 900px) {
+          .analysis-grid {
+            grid-template-columns: 1fr;
+          }
+          .stats-grid {
+            grid-template-columns: repeat(2, 1fr);
+          }
+        }
+      `}</style>
     </div>
   );
 }
