@@ -51,6 +51,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const { limit = 500, sector } = req.query;
+    const sectorFilter = Array.isArray(sector) ? sector[0] : sector;
 
     // Fetch from NEPSE API
     const response = await fetch(`${NEPSE_API_BASE}/api/market/todayprice?sort=scrip%20ASC&size=${limit}`, {
@@ -68,9 +69,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let stocks = data.data || data || [];
 
     // Filter by sector if provided
-    if (sector) {
+    if (sectorFilter) {
       stocks = stocks.filter((s: any) => 
-        s.sector?.toLowerCase() === sector.toLowerCase()
+        s.sector?.toLowerCase() === sectorFilter?.toLowerCase()
       );
     }
 
