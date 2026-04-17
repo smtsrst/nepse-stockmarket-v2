@@ -4,9 +4,8 @@ on:
   schedule:
     # Run every 30 minutes during market hours
     # Nepal market: 11:00 AM - 3:00 PM NPT (5:15 - 9:15 UTC, Sun-Fri)
-    # Cron: minute hour day month weekday
     - cron: '*/30 5-9 * * 0-5'
-    - cron: '*/30 5-9 * * 6' # Also Sunday
+    - cron: '*/30 5-9 * * 6'
 
   workflow_dispatch:
     inputs:
@@ -40,13 +39,11 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip'
 
       - name: Install dependencies
         run: |
           cd backend
           pip install -r requirements.txt
-          pip install python-dotenv
 
       - name: Run data collection
         run: |
@@ -66,15 +63,17 @@ jobs:
         run: |
           cd backend
           python -c "
+          import psycopg2
           import os
-          from dotenv import load_dotenv
-          load_dotenv()
-          from src.data_collector import get_db_stats
-          stats = get_db_stats()
-          print('📊 Database Stats:')
-          print(f'   Stocks: {stats.get(\"stock_count\", \"N/A\")}')
-          print(f'   Price records: {stats.get(\"price_count\", \"N/A\")}')
-          print(f'   Date range: {stats.get(\"date_range\", \"N/A\")}')
+          conn = psycopg2.connect(os.environ['NEON_DATABASE_URL'])
+          cur = conn.cursor()
+          cur.execute('SELECT COUNT(*) FROM stock_prices')
+          count = cur.fetchone()[0]
+          cur.execute('SELECT MIN(date), MAX(date) FROM stock_prices')
+          dates = cur.fetchone()
+          print(f'✅ Database: {count} records ({dates[0]} to {dates[1]})')
+          cur.close()
+          conn.close()
           "
         env:
           NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}

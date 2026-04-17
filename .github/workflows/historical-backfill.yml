@@ -9,10 +9,10 @@ on:
 
   workflow_dispatch:
     inputs:
-      batch_size:
-        description: 'Number of stocks per batch'
+      years:
+        description: 'Years of historical data'
         required: false
-        default: '50'
+        default: '2'
         type: string
 
 env:
@@ -31,18 +31,16 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip'
 
       - name: Install dependencies
         run: |
           cd backend
           pip install -r requirements.txt
-          pip install python-dotenv
 
       - name: Run Merolagani backfill
         run: |
           cd backend
-          python scripts/merolagani_scraper.py 2
+          python scripts/merolagani_scraper.py ${{ github.event.inputs.years || '2' }}
         env:
           NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
 
@@ -51,20 +49,18 @@ jobs:
         run: |
           cd backend
           python -c "
-          import os
-          from dotenv import load_dotenv
-          load_dotenv()
           import psycopg2
-          conn = psycopg2.connect(os.getenv('NEON_DATABASE_URL'))
+          import os
+          conn = psycopg2.connect(os.environ['NEON_DATABASE_URL'])
           cur = conn.cursor()
           cur.execute('SELECT COUNT(*) FROM stock_prices')
           count = cur.fetchone()[0]
           cur.execute('SELECT MIN(date), MAX(date) FROM stock_prices')
           dates = cur.fetchone()
-          print(f'Database: {count} records ({dates[0]} to {dates[1]})')
+          print(f'✅ Database: {count} records ({dates[0]} to {dates[1]})')
           cur.execute('SELECT COUNT(DISTINCT symbol) FROM stock_prices')
           symbols = cur.fetchone()[0]
-          print(f'Stocks with data: {symbols}/348')
+          print(f'✅ Stocks with data: {symbols}/348')
           cur.close()
           conn.close()
           "
