@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { neon } from '@neondatabase/serverless';
 
-const connectionString = process.env.DATABASE_URL;
+const connectionString = process.env.NEON_URL || process.env.DATABASE_URL;
 
 function calculateRSI(prices: number[], period = 14): number {
   if (prices.length < period + 1) return 50;
