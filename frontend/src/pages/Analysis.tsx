@@ -1,228 +1,138 @@
-import { useState } from 'react';
-import { api } from '../api/client';
-import PriceChart from '../components/Charts/PriceChart';
-import StockSelect from '../components/StockSelect';
-import type { TechnicalAnalysis, StockData, StockPrediction } from '../types';
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Search, TrendingUp, Activity, Brain, BarChart3 } from 'lucide-react';
+
+const API_URL = import.meta.env.VITE_API_URL || 'https://nepse-backend-jv9v.onrender.com/api';
+
+interface Stock {
+  symbol: string;
+  name: string;
+  lastTradedPrice: number;
+  percentageChange: number;
+}
 
 export default function Analysis() {
-  const [selectedSymbol, setSelectedSymbol] = useState('');
-  const [searchedSymbol, setSearchedSymbol] = useState<string | null>(null);
-  const [analysis, setAnalysis] = useState<TechnicalAnalysis | null>(null);
-  const [stockData, setStockData] = useState<StockData | null>(null);
-  const [prediction, setPrediction] = useState<StockPrediction | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [stocks, setStocks] = useState<Stock[]>([]);
+  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
 
-  const handleSearch = async (symbol: string) => {
-    if (!symbol.trim()) return;
+  useEffect(() => {
+    loadStocks();
+  }, []);
 
-    setLoading(true);
-    setError('');
-    setSelectedSymbol(symbol);
-    setSearchedSymbol(symbol.toUpperCase());
-    setAnalysis(null);
-    setPrediction(null);
-
+  const loadStocks = async () => {
     try {
-      const [stock, analysisData, predictionData] = await Promise.all([
-        api.getStock(symbol),
-        api.getStockAnalysis(symbol),
-        api.getStockPrediction(symbol).catch(() => null),
-      ]);
-
-      setStockData(stock);
-      setAnalysis(analysisData);
-      setPrediction(predictionData);
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to load analysis');
+      const data = await fetch(`${API_URL}/stocks?limit=500`).then(r => r.json());
+      setStocks(data);
+    } catch (error) {
+      console.error('Error loading stocks:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const getRecommendationColor = (rec?: string) => {
-    switch (rec) {
-      case 'STRONG_BUY':
-      case 'BUY':
-        return 'text-gain';
-      case 'STRONG_SELL':
-      case 'SELL':
-        return 'text-loss';
-      default:
-        return 'text-text-secondary';
-    }
-  };
+  const filteredStocks = stocks
+    .filter(stock => 
+      stock.symbol.toLowerCase().includes(search.toLowerCase()) ||
+      stock.name.toLowerCase().includes(search.toLowerCase())
+    )
+    .slice(0, 20);
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-text-primary">Stock Analysis</h1>
-        <p className="text-text-secondary text-sm">Technical indicators and signals</p>
+    <div className="space-y-4">
+      <div className="flex items-center gap-3 mb-6">
+        <div className="p-2 bg-accent/10 rounded-lg">
+          <TrendingUp className="w-5 h-5 text-accent" />
+        </div>
+        <div>
+          <h1 className="text-xl font-bold text-text-primary">Stock Analysis</h1>
+          <p className="text-text-secondary text-xs">Select a stock to view detailed analysis</p>
+        </div>
       </div>
 
-      {/* Stock Selector */}
-      <div className="flex gap-2">
-        <div className="flex-1">
-          <StockSelect
-            value={selectedSymbol}
-            onChange={handleSearch}
-            placeholder="Select a stock..."
-          />
+      {/* Quick Links */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div className="bg-bg-secondary border border-border rounded-xl p-4">
+          <div className="flex items-center gap-2 text-accent mb-2">
+            <Activity className="w-5 h-5" />
+            <span className="font-medium">Technical Analysis</span>
+          </div>
+          <p className="text-text-secondary text-sm">
+            RSI, MACD, Moving Averages, Bollinger Bands and trend detection
+          </p>
         </div>
-        <button 
-          onClick={() => selectedSymbol && handleSearch(selectedSymbol)}
-          disabled={!selectedSymbol || loading}
-          className="button disabled:opacity-50"
-        >
-          {loading ? 'Loading...' : 'Analyze'}
-        </button>
+        <div className="bg-bg-secondary border border-border rounded-xl p-4">
+          <div className="flex items-center gap-2 text-accent mb-2">
+            <Brain className="w-5 h-5" />
+            <span className="font-medium">ML Predictions</span>
+          </div>
+          <p className="text-text-secondary text-sm">
+            Random Forest model predicting next-day price movement
+          </p>
+        </div>
+        <div className="bg-bg-secondary border border-border rounded-xl p-4">
+          <div className="flex items-center gap-2 text-accent mb-2">
+            <BarChart3 className="w-5 h-5" />
+            <span className="font-medium">Price History</span>
+          </div>
+          <p className="text-text-secondary text-sm">
+            Interactive charts with multiple time range options
+          </p>
+        </div>
       </div>
 
-      {error && (
-        <div className="p-3 bg-loss/10 border border-loss rounded text-loss text-sm">
-          {error}
-        </div>
-      )}
+      {/* Search */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-secondary" />
+        <input
+          type="text"
+          placeholder="Search for a stock symbol or name..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="input w-full pl-10"
+        />
+      </div>
 
-      {/* Results */}
-      {analysis && (
-        <div className="space-y-4">
-          {/* Stock Info with Chart */}
-          <div className="card">
-            <div className="flex justify-between items-start mb-4">
-              <div>
-                <h2 className="text-xl font-bold text-text-primary">{searchedSymbol}</h2>
-                <p className="text-text-secondary">{stockData?.name}</p>
-              </div>
-              <div className="text-right">
-                <div className="text-2xl font-bold text-text-primary">
-                  NPR {stockData?.last_traded_price?.toFixed(2)}
+      {/* Stock List */}
+      <div className="bg-bg-secondary border border-border rounded-xl overflow-hidden">
+        {loading ? (
+          <div className="p-8 text-center text-text-secondary">Loading stocks...</div>
+        ) : (
+          <div className="divide-y divide-border">
+            {filteredStocks.map((stock) => (
+              <div
+                key={stock.symbol}
+                onClick={() => navigate(`/stocks/${stock.symbol}`)}
+                className="flex items-center justify-between p-4 hover:bg-bg-tertiary cursor-pointer transition-colors"
+              >
+                <div>
+                  <div className="font-mono font-semibold text-accent">{stock.symbol}</div>
+                  <div className="text-text-secondary text-sm">{stock.name}</div>
                 </div>
-                <div className={`text-sm ${(stockData?.percentage_change || 0) >= 0 ? 'text-gain' : 'text-loss'}`}>
-                  {(stockData?.percentage_change || 0) >= 0 ? '+' : ''}
-                  {stockData?.percentage_change?.toFixed(2)}%
-                </div>
-              </div>
-            </div>
-            {/* Price Chart */}
-            {searchedSymbol && <PriceChart symbol={searchedSymbol} />}
-          </div>
-
-          {/* Recommendation */}
-          <div className="card">
-            <h3 className="text-text-secondary text-sm mb-2">Recommendation</h3>
-            <div className={`text-2xl font-bold ${getRecommendationColor(analysis.recommendation)}`}>
-              {analysis.recommendation || 'N/A'}
-            </div>
-          </div>
-
-          {/* ML Prediction */}
-          {prediction && (
-            <div className="card border-accent/30">
-              <h3 className="text-text-secondary text-sm mb-2">ML Prediction (Next Day)</h3>
-              <div className="flex items-center gap-4">
-                <div className={`text-3xl font-bold ${prediction.prediction === 'UP' ? 'text-gain' : 'text-loss'}`}>
-                  {prediction.prediction === 'UP' ? '↑' : '↓'} {prediction.prediction}
-                </div>
-                <div className="flex-1">
-                  <div className="text-text-secondary text-sm">
-                    Confidence: {(prediction.confidence * 100).toFixed(1)}%
-                  </div>
-                  <div className="flex gap-2 mt-1">
-                    <div className="text-xs text-gain">UP: {(prediction.prob_up * 100).toFixed(1)}%</div>
-                    <div className="text-xs text-loss">DOWN: {(prediction.prob_down * 100).toFixed(1)}%</div>
+                <div className="text-right">
+                  <div className="font-semibold text-text-primary">Rs. {stock.lastTradedPrice}</div>
+                  <div className={`text-sm ${stock.percentageChange >= 0 ? 'text-gain' : 'text-loss'}`}>
+                    {stock.percentageChange >= 0 ? '+' : ''}{stock.percentageChange?.toFixed(2)}%
                   </div>
                 </div>
               </div>
-            </div>
-          )}
-
-          {/* Technical Indicators */}
-          <div className="grid grid-cols-3 gap-4">
-            <div className="card">
-              <h3 className="text-text-secondary text-sm mb-2">RSI (14)</h3>
-              <div className="text-xl font-bold text-text-primary">
-                {analysis.rsi?.toFixed(2) || 'N/A'}
+            ))}
+            {filteredStocks.length === 0 && (
+              <div className="p-8 text-center text-text-secondary">
+                {search ? 'No stocks found' : 'Loading...'}
               </div>
-              <p className="text-text-secondary text-xs mt-1">
-                {analysis.rsi && analysis.rsi < 30
-                  ? 'Oversold - Potential BUY'
-                  : analysis.rsi && analysis.rsi > 70
-                  ? 'Overbought - Potential SELL'
-                  : 'Neutral'}
-              </p>
-            </div>
-
-            <div className="card">
-              <h3 className="text-text-secondary text-sm mb-2">MACD</h3>
-              <div className="text-xl font-bold text-text-primary">
-                {analysis.macd?.toFixed(2) || 'N/A'}
-              </div>
-              <p className="text-text-secondary text-xs mt-1">
-                Signal: {analysis.macd_signal?.toFixed(2) || 'N/A'}
-              </p>
-            </div>
-
-            <div className="card">
-              <h3 className="text-text-secondary text-sm mb-2">MACD Histogram</h3>
-              <div className={`text-xl font-bold ${(analysis.macd_histogram || 0) >= 0 ? 'text-gain' : 'text-loss'}`}>
-                {(analysis.macd_histogram || 0) >= 0 ? '+' : ''}
-                {analysis.macd_histogram?.toFixed(2) || 'N/A'}
-              </div>
-            </div>
+            )}
           </div>
+        )}
+      </div>
 
-          {/* Moving Averages */}
-          <div className="grid grid-cols-3 gap-4">
-            <div className="card">
-              <h3 className="text-text-secondary text-sm mb-2">SMA 20</h3>
-              <div className="text-xl font-bold text-text-primary">
-                {analysis.sma_20 ? `NPR ${analysis.sma_20.toFixed(2)}` : 'N/A'}
-              </div>
-            </div>
-
-            <div className="card">
-              <h3 className="text-text-secondary text-sm mb-2">SMA 50</h3>
-              <div className="text-xl font-bold text-text-primary">
-                {analysis.sma_50 ? `NPR ${analysis.sma_50.toFixed(2)}` : 'N/A'}
-              </div>
-            </div>
-
-            <div className="card">
-              <h3 className="text-text-secondary text-sm mb-2">SMA 200</h3>
-              <div className="text-xl font-bold text-text-primary">
-                {analysis.sma_200 ? `NPR ${analysis.sma_200.toFixed(2)}` : 'N/A'}
-              </div>
-            </div>
-          </div>
-
-          {/* Bollinger Bands */}
-          <div className="card">
-            <h3 className="text-text-secondary text-sm mb-4">Bollinger Bands</h3>
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <p className="text-text-secondary text-xs">Upper</p>
-                <p className="text-lg font-medium text-text-primary">
-                  {analysis.bollinger_upper ? `NPR ${analysis.bollinger_upper.toFixed(2)}` : 'N/A'}
-                </p>
-              </div>
-              <div>
-                <p className="text-text-secondary text-xs">Middle</p>
-                <p className="text-lg font-medium text-text-primary">
-                  {analysis.bollinger_middle ? `NPR ${analysis.bollinger_middle.toFixed(2)}` : 'N/A'}
-                </p>
-              </div>
-              <div>
-                <p className="text-text-secondary text-xs">Lower</p>
-                <p className="text-lg font-medium text-text-primary">
-                  {analysis.bollinger_lower ? `NPR ${analysis.bollinger_lower.toFixed(2)}` : 'N/A'}
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <div className="text-center text-text-secondary text-sm">
+        Or browse all stocks from the <span 
+          onClick={() => navigate('/stocks')}
+          className="text-accent cursor-pointer hover:underline"
+        >Stocks page</span>
+      </div>
     </div>
   );
 }

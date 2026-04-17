@@ -2,7 +2,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import Dashboard from './pages/Dashboard';
 import Stocks from './pages/Stocks';
-import Analysis from './pages/Analysis';
+import StockDetail from './pages/StockDetail';
 import Sidebar from './components/Layout/Sidebar';
 
 export default function App() {
@@ -27,7 +27,8 @@ export default function App() {
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/stocks" element={<Stocks />} />
-            <Route path="/analysis" element={<Analysis />} />
+            <Route path="/stocks/:symbol" element={<StockDetail />} />
+            <Route path="/analysis/:symbol" element={<StockDetail />} />
             <Route path="*" element={<Dashboard />} />
           </Routes>
         </main>
