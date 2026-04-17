@@ -33,20 +33,16 @@
       "dest": "/api/stocks/index.ts"
     },
     {
-      "src": "/api/stocks/([^/]+)/history",
-      "dest": "/api/history/index.ts?symbol=$1"
+      "src": "/api/history",
+      "dest": "/api/history/index.ts"
     },
     {
-      "src": "/api/stocks/([^/]+)/analysis",
-      "dest": "/api/analysis/index.ts?symbol=$1"
+      "src": "/api/analysis",
+      "dest": "/api/analysis/index.ts"
     },
     {
-      "src": "/api/stocks/([^/]+)",
-      "dest": "/api/stocks/index.ts?sector=$1"
-    },
-    {
-      "src": "/api/predict/([^/]+)",
-      "dest": "/api/predict/index.ts?symbol=$1"
+      "src": "/api/predict",
+      "dest": "/api/predict/index.ts"
     },
     {
       "src": "/(.*)",

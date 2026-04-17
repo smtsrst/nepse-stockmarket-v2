@@ -102,10 +102,10 @@ export default function StockDetail() {
       if (isRefresh) setRefreshing(true);
       
       const [stockData, historyData, analysisData, predictionData] = await Promise.all([
-        fetch(`${API_URL}/stocks/${symbol}`).then(r => r.json()).catch(() => null),
-        fetch(`${API_URL}/stocks/${symbol}/history?days=${timeRangeDays[timeRange]}`).then(r => r.json()).catch(() => ({ history: [] })),
-        fetch(`${API_URL}/stocks/${symbol}/analysis`).then(r => r.json()).catch(() => null),
-        fetch(`${API_URL}/predict/${symbol}`).then(r => r.json()).catch(() => null),
+        fetch(`${API_URL}/stocks`).then(r => r.json()).then(stocks => stocks.find((s: any) => s.symbol === symbol?.toUpperCase())).catch(() => null),
+        fetch(`${API_URL}/history?symbol=${symbol}&days=${timeRangeDays[timeRange]}`).then(r => r.json()).catch(() => ({ history: [] })),
+        fetch(`${API_URL}/analysis?symbol=${symbol}`).then(r => r.json()).catch(() => null),
+        fetch(`${API_URL}/predict?symbol=${symbol}`).then(r => r.json()).catch(() => null),
       ]);
 
       if (stockData && !stockData.detail) {
