@@ -26,8 +26,9 @@ export default function Backtesting() {
     setLoading(true);
     setResult(null);
 
-    // Use direct backend URL - more reliable than proxy in some cases
-    const url = `http://localhost:8000/api/stocks/history/${config.symbol}?days=365`;
+    // Use API from environment or default to Render backend
+    const API_URL = import.meta.env.VITE_API_URL || 'https://nepse-backend-jv9v.onrender.com/api';
+    const url = `${API_URL}/stocks/history/${config.symbol}?days=365`;
     
     console.log('Fetching URL:', url);
     console.log('Symbol:', config.symbol);
