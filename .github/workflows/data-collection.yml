@@ -1,0 +1,80 @@
+name: NEPSE Data Collection
+
+on:
+  schedule:
+    # Run every 30 minutes during market hours
+    # Nepal market: 11:00 AM - 3:00 PM NPT (5:15 - 9:15 UTC, Sun-Fri)
+    # Cron: minute hour day month weekday
+    - cron: '*/30 5-9 * * 0-5'
+    - cron: '*/30 5-9 * * 6' # Also Sunday
+
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Collection mode'
+        required: true
+        default: 'live'
+        type: choice
+        options:
+          - live
+          - backfill
+      days:
+        description: 'Days to backfill (for backfill mode only)'
+        required: false
+        default: '1095'
+        type: string
+
+env:
+  NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
+
+jobs:
+  collect-data:
+    name: Collect NEPSE Data
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          cd backend
+          pip install -r requirements.txt
+          pip install python-dotenv
+
+      - name: Run data collection
+        run: |
+          cd backend
+          if [ "${{ github.event.inputs.mode }}" == "backfill" ]; then
+            echo "Running backfill for ${{ github.event.inputs.days || '1095' }} days..."
+            python scripts/backfill.py --days ${{ github.event.inputs.days || '1095' }}
+          else
+            echo "Running live data collection..."
+            python scripts/collect_live.py
+          fi
+        env:
+          NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
+
+      - name: Get database stats
+        if: success()
+        run: |
+          cd backend
+          python -c "
+          import os
+          from dotenv import load_dotenv
+          load_dotenv()
+          from src.data_collector import get_db_stats
+          stats = get_db_stats()
+          print('📊 Database Stats:')
+          print(f'   Stocks: {stats.get(\"stock_count\", \"N/A\")}')
+          print(f'   Price records: {stats.get(\"price_count\", \"N/A\")}')
+          print(f'   Date range: {stats.get(\"date_range\", \"N/A\")}')
+          "
+        env:
+          NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
