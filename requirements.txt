@@ -1,5 +1,10 @@
 # NEPSE Stock Dashboard V2 - Dependencies
 
+# Core API & Server
+fastapi==0.104.1
+uvicorn==0.27.0
+python-multipart==0.0.9
+
 # Core
 streamlit>=1.0.0
 pandas>=1.5.0
