@@ -13,12 +13,44 @@
   ],
   "routes": [
     {
-      "src": "/api/(.*)",
-      "dest": "/api/$1"
+      "src": "/api/market/status",
+      "dest": "/api/market/status.ts"
+    },
+    {
+      "src": "/api/market/summary",
+      "dest": "/api/market/summary.ts"
+    },
+    {
+      "src": "/api/stocks/gainers",
+      "dest": "/api/stocks/gainers.ts"
+    },
+    {
+      "src": "/api/stocks/losers",
+      "dest": "/api/stocks/losers.ts"
+    },
+    {
+      "src": "/api/stocks",
+      "dest": "/api/stocks/index.ts"
+    },
+    {
+      "src": "/api/stocks/([^/]+)/analysis",
+      "dest": "/api/stocks/[symbol]/analysis.ts"
+    },
+    {
+      "src": "/api/stocks/([^/]+)/history",
+      "dest": "/api/stocks/[symbol]/history.ts"
+    },
+    {
+      "src": "/api/stocks/([^/]+)",
+      "dest": "/api/stocks/[symbol]/index.ts"
+    },
+    {
+      "src": "/api/predict/([^/]+)",
+      "dest": "/api/predict/[symbol].ts"
     },
     {
       "src": "/(.*)",
-      "dest": "/index.html"
+      "dest": "/dist/$1"
     }
   ]
 }
