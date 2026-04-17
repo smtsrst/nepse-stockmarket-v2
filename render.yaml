@@ -1,0 +1,3 @@
+blueprints:
+  - file: render.yaml
+  - file: postgres.yaml

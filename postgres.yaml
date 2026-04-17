@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: nepse-backend
+    env: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    envVars:
+      - fromDatabase:
+          name: nepse-db
+          envVar: DATABASE_URL
+      - key: SECRET_KEY
+        generateValue: true
+      - key: CORS_ORIGINS
+        value: "http://localhost:5173,http://localhost:8000,https://frontend-eight-tan-70.vercel.app,https://*.vercel.app"
+      - key: MOCK_MODE
+        value: "false"
+
+databases:
+  - name: nepse-db
+    plan: free
+    databaseName: nepse_stock_db
+    ipAllowList: []

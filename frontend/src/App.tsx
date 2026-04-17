@@ -22,21 +22,32 @@ function App() {
   const [checkingAuth, setCheckingAuth] = useState(true);
 
   useEffect(() => {
-    // Check authentication
+    // Check authentication - clear invalid tokens
     const token = api.getAccessToken();
-    setIsAuthenticated(!!token);
+    if (token) {
+      // Token exists, verify it works
+      api.getMe()
+        .then(() => {
+          setIsAuthenticated(true);
+        })
+        .catch(() => {
+          // Token invalid, clear it
+          api.logout();
+          setIsAuthenticated(false);
+        });
+    } else {
+      setIsAuthenticated(false);
+    }
     setCheckingAuth(false);
 
-    // Check market status
+    // Check market status (non-blocking)
     api.getMarketStatus()
       .then(status => setMarketOpen(status.is_open))
       .catch(() => setMarketOpen(false));
   }, []);
 
   const handleLogin = () => {
-    // Get token after successful login
-    const token = api.getAccessToken();
-    setIsAuthenticated(!!token);
+    setIsAuthenticated(true);
   };
 
   const handleLogout = () => {
