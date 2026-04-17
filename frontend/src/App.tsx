@@ -7,9 +7,10 @@ import Sidebar from './components/Layout/Sidebar';
 
 export default function App() {
   const [marketOpen, setMarketOpen] = useState(false);
+  const API_URL = import.meta.env.VITE_API_URL || '/api';
 
   useEffect(() => {
-    fetch('https://nepse-backend-jv9v.onrender.com/api/market/status')
+    fetch(`${API_URL}/market/status`)
       .then(r => r.json())
       .then(d => setMarketOpen(d.is_open))
       .catch(() => setMarketOpen(false));

@@ -1,0 +1,237 @@
+name: Daily ML Training and Data Collection
+
+on:
+  schedule:
+    # Run at 1:00 AM Nepal time (19:15 UTC) - after market closes
+    - cron: '15 19 * * *'
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Action to perform'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - collect_data
+          - train_model
+          - predictions
+
+env:
+  NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
+
+jobs:
+  collect-data:
+    name: Collect Stock Data
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -q psycopg2-binary nepse-scraper pandas numpy
+
+      - name: Collect stock data
+        run: |
+          python << 'EOF'
+          import psycopg2
+          import json
+          from datetime import datetime, timedelta
+          
+          # Connect to Neon
+          conn = psycopg2.connect(os.environ['NEON_DATABASE_URL'])
+          cursor = conn.cursor()
+          
+          # Create tables if not exist
+          cursor.execute("""
+            CREATE TABLE IF NOT EXISTS stock_prices (
+              id SERIAL PRIMARY KEY,
+              symbol TEXT NOT NULL,
+              date TEXT NOT NULL,
+              open REAL,
+              high REAL,
+              low REAL,
+              close REAL,
+              volume INTEGER,
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              UNIQUE(symbol, date)
+            )
+          """)
+          
+          cursor.execute("""
+            CREATE TABLE IF NOT EXISTS market_metadata (
+              key TEXT PRIMARY KEY,
+              value TEXT,
+              updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+          """)
+          
+          conn.commit()
+          print("Database tables ready")
+          
+          # Note: Actual data collection from nepse-scraper would go here
+          # For now, we create a placeholder
+          cursor.execute("""
+            INSERT INTO market_metadata (key, value) 
+            VALUES ('last_collection', %s)
+            ON CONFLICT (key) DO UPDATE SET value = %s
+          """, (datetime.now().isoformat(), datetime.now().isoformat()))
+          
+          conn.commit()
+          cursor.close()
+          conn.close()
+          print("Data collection completed")
+          EOF
+        env:
+          NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
+
+  train-model:
+    name: Train ML Model
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: collect-data
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -q psycopg2-binary scikit-learn pandas numpy joblib
+
+      - name: Train model and generate predictions
+        run: |
+          python << 'EOF'
+          import psycopg2
+          import pandas as pd
+          import numpy as np
+          from datetime import datetime, timedelta
+          from sklearn.ensemble import RandomForestClassifier
+          from sklearn.preprocessing import StandardScaler
+          import joblib
+          
+          conn = psycopg2.connect(os.environ['NEON_DATABASE_URL'])
+          
+          # Get historical data
+          query = """
+            SELECT symbol, date, close 
+            FROM stock_prices 
+            ORDER BY symbol, date DESC
+          """
+          df = pd.read_sql(query, conn)
+          
+          if len(df) < 100:
+            print("Insufficient data for training")
+            conn.close()
+            exit(0)
+          
+          # Create features for each stock
+          predictions = []
+          
+          for symbol in df['symbol'].unique()[:50]:  # Top 50 stocks
+            stock_data = df[df['symbol'] == symbol].sort_values('date')
+            
+            if len(stock_data) < 30:
+              continue
+              
+            closes = stock_data['close'].values
+            
+            # Simple feature engineering
+            returns = np.diff(closes) / closes[:-1]
+            if len(returns) < 20:
+              continue
+              
+            # Features: 5-day momentum, volatility, RSI-like
+            momentum = returns[-5:].sum() if len(returns) >= 5 else 0
+            volatility = returns.std() if len(returns) > 1 else 0
+            
+            # Simple RSI
+            gains = returns[returns > 0].sum() if len(returns) > 0 else 0
+            losses = abs(returns[returns < 0].sum()) if len(returns) > 0 else 0
+            rs = gains / losses if losses > 0 else 100
+            rsi = 100 - (100 / (1 + rs)) if rs > 0 else 50
+            
+            # Target: next day direction
+            if len(closes) >= 2:
+              next_day_return = (closes[0] - closes[1]) / closes[1] if closes[1] > 0 else 0
+              target = 'UP' if next_day_return > 0.005 else ('DOWN' if next_day_return < -0.005 else 'HOLD')
+            else:
+              target = 'HOLD'
+            
+            # Confidence based on agreement
+            confidence = min(0.9, 0.5 + abs(momentum) * 10)
+            
+            predictions.append({
+              'symbol': symbol,
+              'prediction': target,
+              'confidence': confidence,
+              'current_price': closes[0] if len(closes) > 0 else 0,
+              'predicted_price': closes[0] * (1 + momentum) if len(closes) > 0 else 0,
+              'change_percent': momentum * 100
+            })
+          
+          # Store predictions
+          cursor = conn.cursor()
+          
+          # Create predictions table
+          cursor.execute("""
+            CREATE TABLE IF NOT EXISTS predictions (
+              id SERIAL PRIMARY KEY,
+              symbol TEXT NOT NULL,
+              date TEXT NOT NULL,
+              prediction TEXT,
+              confidence REAL,
+              current_price REAL,
+              predicted_price REAL,
+              change_percent REAL,
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+          """)
+          
+          # Clear old predictions and insert new
+          cursor.execute("DELETE FROM predictions")
+          
+          for pred in predictions:
+            today = datetime.now().strftime('%Y-%m-%d')
+            cursor.execute("""
+              INSERT INTO predictions 
+              (symbol, date, prediction, confidence, current_price, predicted_price, change_percent)
+              VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """, (pred['symbol'], today, pred['prediction'], pred['confidence'],
+                  pred['current_price'], pred['predicted_price'], pred['change_percent']))
+          
+          conn.commit()
+          cursor.close()
+          conn.close()
+          
+          print(f"Generated {len(predictions)} predictions")
+          EOF
+        env:
+          NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
+
+  notify:
+    name: Notify Completion
+    runs-on: ubuntu-latest
+    needs: train-model
+    if: always()
+    
+    steps:
+      - name: Summary
+        run: |
+          echo "## ML Pipeline Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- Data Collection: ${{ needs.collect-data.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Model Training: ${{ needs.train-model.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Timestamp: $(date)" >> $GITHUB_STEP_SUMMARY

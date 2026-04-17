@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Activity, RefreshCw, Clock, TrendingUp, TrendingDown, DollarSign, BarChart3, PieChart } from 'lucide-react';
 
-const API_URL = import.meta.env.VITE_API_URL || 'https://nepse-backend-jv9v.onrender.com/api';
+const API_URL = import.meta.env.VITE_API_URL || '/api';
 
 interface Stock {
   symbol: string;
