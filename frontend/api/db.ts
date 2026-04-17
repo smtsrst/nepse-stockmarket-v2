@@ -1,15 +1,8 @@
-import { neon, NeonQueryFunction } from '@neondatabase/serverless';
-import { Pool } from '@neondatabase/serverless';
+import { neon } from '@neondatabase/serverless';
 
 const connectionString = process.env.DATABASE_URL;
 
-let pool: Pool | null = null;
-let sql: NeonQueryFunction<false, false> | null = null;
-
-if (connectionString) {
-  sql = neon(connectionString);
-  pool = new Pool({ connectionString });
-}
+let sql = connectionString ? neon(connectionString) : null;
 
 export interface StockPrice {
   id: number;
@@ -34,27 +27,30 @@ export interface Prediction {
   created_at: string;
 }
 
-export { sql, pool };
-
 export function isDbConfigured(): boolean {
   return !!sql;
 }
 
 export async function query<T>(text: string, params?: unknown[]): Promise<T[]> {
   if (!sql) {
-    console.warn('Database not configured, returning empty results');
-    return [];
+    console.warn('Database not configured');
+    throw new Error('Database not configured');
   }
+  
   try {
     const result = await sql(text, params);
     return result as T[];
   } catch (error) {
     console.error('Database query error:', error);
-    return [];
+    throw error;
   }
 }
 
 export async function queryOne<T>(text: string, params?: unknown[]): Promise<T | null> {
-  const results = await query<T>(text, params);
-  return results[0] || null;
+  try {
+    const results = await query<T>(text, params);
+    return results[0] || null;
+  } catch {
+    return null;
+  }
 }
