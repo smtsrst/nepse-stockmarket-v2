@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-const NEPSE_API_BASE = 'https://api.nepseapi.com';
+const NEPSE_API_BASE = 'https://nepseapi.surajrimal.dev';
 
 // Cache for 5 minutes
 let summaryCache: {
@@ -25,7 +25,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json(summaryCache.data);
     }
 
-    const response = await fetch(`${NEPSE_API_BASE}/api/market/todayprice?sort=scrip%20ASC&size=500`, {
+    const response = await fetch(`${NEPSE_API_BASE}/Summary`, {
       headers: { 'Content-Type': 'application/json' },
     });
 
@@ -34,14 +34,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const data = await response.json();
-    const stocks = data.data || data || [];
+    const summaryData = data.data || data || {};
 
-    // Calculate summary
+    // Format summary (adjust based on actual API response structure)
     const summary = {
-      total_turnover: stocks.reduce((sum: number, s: any) => sum + (parseFloat(s.turnover || 0) * parseFloat(s.closePrice || s.lastTradedPrice || 0) / 10000000), 0),
-      total_trade: stocks.reduce((sum: number, s: any) => sum + (parseFloat(s.numberOfTransactions || 0)), 0),
-      total_share: stocks.reduce((sum: number, s: any) => sum + (parseInt(s.volume || 0)), 0),
-      total_companies: stocks.length,
+      total_turnover: parseFloat(summaryData.totalTurnover || summaryData.turnover || 0),
+      total_trade: parseInt(summaryData.totalTransactions || summaryData.trade || 0),
+      total_share: parseInt(summaryData.totalShares || summaryData.share || 0),
+      total_companies: parseInt(summaryData.totalCompanies || summaryData.companies || 0),
     };
 
     // Cache result

@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-const NEPSE_API_BASE = 'https://api.nepseapi.com';
+const NEPSE_API_BASE = 'https://nepseapi.surajrimal.dev';
 
 // Cache for 5 minutes
 let cache: {
@@ -31,19 +31,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    const response = await fetch(`${NEPSE_API_BASE}/api/market/todayprice?sort=scrip%20ASC&size=500`, {
-      headers: { 'Content-Type': 'application/json' },
-    });
+    // Fetch from both endpoints in parallel
+    const [gainersRes, losersRes] = await Promise.all([
+      fetch(`${NEPSE_API_BASE}/TopGainers?limit=20`),
+      fetch(`${NEPSE_API_BASE}/TopLosers?limit=20`),
+    ]);
 
-    if (!response.ok) {
-      throw new Error(`NEPSE API error: ${response.status}`);
+    if (!gainersRes.ok || !losersRes.ok) {
+      throw new Error(`NEPSE API error: ${gainersRes.status} / ${losersRes.status}`);
     }
 
-    const data = await response.json();
-    let stocks = data.data || data || [];
+    const gainersData = await gainersRes.json();
+    const losersData = await losersRes.json();
 
-    // Format stocks
-    const formatted = stocks.map((s: any) => ({
+    // Format gainers
+    const gainers = (gainersData.data || gainersData || []).map((s: any) => ({
       symbol: s.symbol || s.scripSymbol || '',
       name: s.companyName || s.company || '',
       lastTradedPrice: parseFloat(s.closePrice || s.lastTradedPrice || 0),
@@ -54,10 +56,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       lowPrice: parseFloat(s.lowPrice || s.low || 0),
     }));
 
-    // Sort for gainers and losers
-    const sorted = [...formatted].sort((a, b) => b.percentageChange - a.percentageChange);
-    const gainers = sorted.filter(s => s.percentageChange > 0).slice(0, 20);
-    const losers = sorted.filter(s => s.percentageChange < 0).slice(-20).reverse();
+    // Format losers
+    const losers = (losersData.data || losersData || []).map((s: any) => ({
+      symbol: s.symbol || s.scripSymbol || '',
+      name: s.companyName || s.company || '',
+      lastTradedPrice: parseFloat(s.closePrice || s.lastTradedPrice || 0),
+      percentageChange: parseFloat(s.percentageChange || 0),
+      volume: parseInt(s.volume || 0),
+      openPrice: parseFloat(s.openPrice || 0),
+      highPrice: parseFloat(s.highPrice || s.high || 0),
+      lowPrice: parseFloat(s.lowPrice || s.low || 0),
+    }));
 
     // Cache result
     cache = {

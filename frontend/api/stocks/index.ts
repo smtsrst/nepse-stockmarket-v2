@@ -1,43 +1,14 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-const NEPSE_API_BASE = 'https://api.nepseapi.com';
+const NEPSE_API_BASE = 'https://nepseapi.surajrimal.dev';
 
 // Cache for market data (5 minutes)
 let marketCache: {
   stocks: unknown[];
-  summary: unknown;
-  gainers: unknown[];
-  losers: unknown[];
   timestamp: number;
 } | null = null;
 
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
-
-async function fetchWithCache<T>(
-  key: keyof typeof marketCache,
-  fetcher: () => Promise<T>
-): Promise<T> {
-  if (marketCache && Date.now() - marketCache.timestamp < CACHE_DURATION && marketCache[key]) {
-    return marketCache[key] as T;
-  }
-
-  const data = await fetcher();
-
-  if (!marketCache) {
-    marketCache = {
-      stocks: [],
-      summary: null,
-      gainers: [],
-      losers: [],
-      timestamp: Date.now(),
-    };
-  }
-
-  (marketCache as Record<string, unknown>)[key] = data;
-  marketCache.timestamp = Date.now();
-
-  return data;
-}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Enable CORS
@@ -53,8 +24,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const { limit = 500, sector } = req.query;
     const sectorFilter = Array.isArray(sector) ? sector[0] : sector;
 
+    // Check cache
+    if (marketCache && Date.now() - marketCache.timestamp < CACHE_DURATION) {
+      let stocks = marketCache.stocks as any[];
+      
+      if (sectorFilter) {
+        stocks = stocks.filter((s: any) => 
+          s.sector?.toLowerCase() === sectorFilter?.toLowerCase()
+        );
+      }
+      
+      return res.status(200).json(stocks.slice(0, Number(limit)));
+    }
+
     // Fetch from NEPSE API
-    const response = await fetch(`${NEPSE_API_BASE}/api/market/todayprice?sort=scrip%20ASC&size=${limit}`, {
+    const response = await fetch(`${NEPSE_API_BASE}/PriceVolume?limit=500`, {
       headers: {
         'Content-Type': 'application/json',
       },
@@ -65,21 +49,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const data = await response.json();
-
     let stocks = data.data || data || [];
-
-    // Filter by sector if provided
-    if (sectorFilter) {
-      stocks = stocks.filter((s: any) => 
-        s.sector?.toLowerCase() === sectorFilter?.toLowerCase()
-      );
-    }
 
     // Format response
     const formattedStocks = stocks.map((s: any) => ({
       symbol: s.symbol || s.scripSymbol || '',
       name: s.companyName || s.company || '',
-      lastTradedPrice: parseFloat(s.closePrice || s.lastTradedPrice || 0),
+      lastTradedPrice: parseFloat(s.closePrice || s.lastTradedPrice || s.price || 0),
       percentageChange: parseFloat(s.percentageChange || 0),
       volume: parseInt(s.volume || 0),
       openPrice: parseFloat(s.openPrice || 0),
@@ -88,6 +64,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       closePrice: parseFloat(s.closePrice || 0),
       sector: s.sector || '',
     }));
+
+    // Cache result
+    marketCache = {
+      stocks: formattedStocks,
+      timestamp: Date.now(),
+    };
+
+    // Filter by sector if provided
+    if (sectorFilter) {
+      const filtered = formattedStocks.filter((s: any) => 
+        s.sector?.toLowerCase() === sectorFilter?.toLowerCase()
+      );
+      return res.status(200).json(filtered.slice(0, Number(limit)));
+    }
 
     return res.status(200).json(formattedStocks.slice(0, Number(limit)));
   } catch (error) {
