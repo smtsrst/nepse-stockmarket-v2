@@ -5,6 +5,7 @@ Authentication API endpoints.
 from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
@@ -19,6 +20,8 @@ from app.security import (
     decode_token,
 )
 from app.config import get_settings
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 settings = get_settings()
@@ -121,7 +124,28 @@ def refresh_token(
 
 
 @router.get("/me", response_model=UserResponse)
-def get_me(db: Session = Depends(get_db)):
-    """Get current user info (for testing)."""
-    # This is a simplified version - in production, use get_current_user
-    return {"detail": "Use Authorization header to get user info"}
+def get_me(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    """Get current user info."""
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+        )
+
+    payload = decode_token(token)
+    if not payload:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token",
+        )
+
+    email = payload.get("sub")
+    user = db.query(User).filter(User.email == email).first()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+        )
+
+    return user
