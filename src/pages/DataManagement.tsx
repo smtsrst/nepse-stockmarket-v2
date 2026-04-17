@@ -1,134 +1,112 @@
 import { useState, useEffect } from 'react';
-import { RefreshCw, Database, Clock, CheckCircle, AlertCircle, Loader, XCircle, Brain } from 'lucide-react';
+import { RefreshCw, Database, Clock, CheckCircle, AlertCircle, ExternalLink } from 'lucide-react';
 
-const API_URL = import.meta.env.VITE_API_URL || '';
-
-interface DataStatus {
-  running: boolean;
-  last_collection: string | null;
-  stats: {
-    collected: number;
-    failed: number;
-    duration_seconds: number;
-  } | null;
-  db_records: number;
-  db_symbols: number;
-}
+const API_URL = import.meta.env.VITE_API_URL || 'https://frontend-eight-tan-70.vercel.app/api';
 
 interface DatabaseStats {
-  total_records: number;
-  unique_symbols: number;
+  stock_count: number;
+  price_count: number;
   date_range: string;
-}
-
-interface SymbolInfo {
-  symbol: string;
-  records: number;
-  from: string;
-  to: string;
+  last_collection: string | null;
+  last_records: number;
+  last_status: string | null;
 }
 
 export default function DataManagement() {
-  const [status, setStatus] = useState<DataStatus | null>(null);
   const [dbStats, setDbStats] = useState<DatabaseStats | null>(null);
-  const [symbols, setSymbols] = useState<SymbolInfo[]>([]);
-  const [collecting, setCollecting] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [symbols, setSymbols] = useState<
+    { symbol: string; records: number; first_date: string; last_date: string }[]
+  >([]);
 
-  const fetchStatus = async () => {
+  const fetchStats = async () => {
     try {
-      const res = await fetch(`${API_URL}/api/data/status`);
-      if (!res.ok) throw new Error('API unavailable');
-      const data = await res.json();
-      setStatus(data);
+      // Get all stocks and count prices per symbol
+      const stocksRes = await fetch(`${API_URL}/stocks`);
+      const stocks = await stocksRes.json();
+
+      const symbolStats: {
+        symbol: string;
+        records: number;
+        first_date: string;
+        last_date: string;
+      }[] = [];
+
+      // Sample a few stocks to get stats (don't fetch all for performance)
+      const sampleSymbols = Array.isArray(stocks) ? stocks.slice(0, 50) : [];
+
+      let totalRecords = 0;
+      let minDate = '';
+      let maxDate = '';
+
+      for (const stock of sampleSymbols) {
+        try {
+          const historyRes = await fetch(`${API_URL}/history?symbol=${stock.symbol}&days=1000`);
+          const historyData = await historyRes.json();
+
+          if (
+            historyData.history &&
+            Array.isArray(historyData.history) &&
+            historyData.history.length > 0
+          ) {
+            const records = historyData.history.length;
+            totalRecords += records;
+
+            if (!minDate || historyData.history[historyData.history.length - 1].date < minDate) {
+              minDate = historyData.history[historyData.history.length - 1].date;
+            }
+            if (!maxDate || historyData.history[0].date > maxDate) {
+              maxDate = historyData.history[0].date;
+            }
+
+            symbolStats.push({
+              symbol: stock.symbol,
+              records,
+              first_date: historyData.history[historyData.history.length - 1].date,
+              last_date: historyData.history[0].date,
+            });
+          }
+        } catch (e) {
+          // Skip errors for individual symbols
+        }
+      }
+
+      // Estimate total based on sample
+      const sampleRatio = Array.isArray(stocks) ? stocks.length / sampleSymbols.length : 1;
+      const estimatedTotal = Math.round(totalRecords * sampleRatio);
+
+      setDbStats({
+        stock_count: Array.isArray(stocks) ? stocks.length : 0,
+        price_count: estimatedTotal,
+        date_range: minDate && maxDate ? `${minDate} to ${maxDate}` : 'No data',
+        last_collection: null,
+        last_records: totalRecords,
+        last_status: 'ok',
+      });
+
+      setSymbols(symbolStats.sort((a, b) => b.records - a.records));
       setError(null);
     } catch (err) {
-      setError('Backend API not available. Connect to local backend to manage data.');
-    }
-  };
-
-  const fetchDbStats = async () => {
-    try {
-      const res = await fetch(`${API_URL}/api/data/stats`);
-      if (!res.ok) throw new Error('API unavailable');
-      const data = await res.json();
-      setDbStats(data);
-    } catch (err) {
-      console.error('Failed to fetch stats:', err);
-    }
-  };
-
-  const fetchSymbols = async () => {
-    try {
-      const res = await fetch(`${API_URL}/api/data/symbols?limit=50`);
-      if (!res.ok) throw new Error('API unavailable');
-      const data = await res.json();
-      setSymbols(data.symbols || []);
-    } catch (err) {
-      console.error('Failed to fetch symbols:', err);
-    }
-  };
-
-  const triggerCollection = async () => {
-    setCollecting(true);
-    try {
-      const res = await fetch(`${API_URL}/api/data/collect`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ full: false }),
-      });
-      if (!res.ok) throw new Error('Collection failed');
-      await fetchStatus();
-      await fetchDbStats();
-    } catch (err) {
-      console.error('Failed to trigger collection:', err);
+      setError('Failed to fetch database stats');
+      console.error(err);
     } finally {
-      setCollecting(false);
+      setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchStatus();
-    fetchDbStats();
-    fetchSymbols();
-    
-    const interval = setInterval(() => {
-      fetchStatus();
-    }, 30000);
-    return () => clearInterval(interval);
+    fetchStats();
   }, []);
 
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return 'Never';
-    return new Date(dateStr).toLocaleString();
+    try {
+      return new Date(dateStr).toLocaleDateString();
+    } catch {
+      return dateStr;
+    }
   };
-
-  const formatDuration = (seconds: number) => {
-    if (seconds < 60) return `${Math.round(seconds)}s`;
-    return `${Math.round(seconds / 60)}m ${Math.round(seconds % 60)}s`;
-  };
-
-  if (error) {
-    return (
-      <div className="data-management">
-        <div className="dashboard-header">
-          <div className="header-left">
-            <h1 className="page-title">DATA MANAGEMENT</h1>
-          </div>
-        </div>
-        <div className="card">
-          <div className="empty-state">
-            <XCircle size={48} className="text-loss mb-4" />
-            <h2 className="text-lg font-medium mb-2">Backend Unavailable</h2>
-            <p className="text-muted mb-4">{error}</p>
-            <p className="text-muted text-sm">
-              Start the backend server with: <code className="code">python -m uvicorn app.main:app --reload</code>
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="data-management">
@@ -137,171 +115,171 @@ export default function DataManagement() {
           <h1 className="page-title">DATA MANAGEMENT</h1>
         </div>
         <div className="header-right">
-          <button
-            onClick={triggerCollection}
-            disabled={collecting}
-            className="btn btn-primary"
-          >
-            {collecting ? <Loader size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-            {collecting ? 'Collecting...' : 'Update Now'}
+          <button onClick={fetchStats} disabled={loading} className="btn btn-ghost">
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            Refresh
           </button>
         </div>
       </div>
 
-      <div className="summary-grid">
-        <div className="summary-card">
-          <div className="summary-card-icon">
-            <Database size={18} />
-          </div>
-          <div className="summary-card-label">Database Records</div>
-          <div className="summary-card-value">
-            {dbStats?.total_records?.toLocaleString() || status?.db_records?.toLocaleString() || 0}
-          </div>
-        </div>
-        <div className="summary-card">
-          <div className="summary-card-icon">
-            <CheckCircle size={18} />
-          </div>
-          <div className="summary-card-label">Symbols Tracked</div>
-          <div className="summary-card-value">
-            {dbStats?.unique_symbols || status?.db_symbols || 0}
-          </div>
-        </div>
-        <div className="summary-card">
-          <div className="summary-card-icon">
-            <Clock size={18} />
-          </div>
-          <div className="summary-card-label">Last Collection</div>
-          <div className="summary-card-value text-sm">
-            {formatDate(status?.last_collection || null)}
-          </div>
-        </div>
-        <div className="summary-card">
-          <div className="summary-card-icon">
-            {status?.running ? (
-              <CheckCircle size={18} className="text-gain" />
-            ) : (
-              <AlertCircle size={18} className="text-loss" />
-            )}
-          </div>
-          <div className="summary-card-label">Status</div>
-          <div className={`summary-card-value ${status?.running ? 'text-gain' : 'text-loss'}`}>
-            {status?.running ? 'Running' : 'Idle'}
+      <div className="card mb-4">
+        <div className="card-body">
+          <div className="info-box">
+            <AlertCircle size={18} className="text-accent" />
+            <div>
+              <p className="font-medium mb-1">GitHub Actions Data Collection</p>
+              <p className="text-sm text-secondary">
+                Data is automatically collected every 30 minutes during market hours via GitHub
+                Actions. Historical data backfill runs on the first deployment.
+              </p>
+            </div>
           </div>
         </div>
       </div>
 
-      {status?.stats && (
-        <div className="summary-grid mt-4 stats-grid">
-          <div className="summary-card">
-            <div className="summary-card-label">Last Collection Stats</div>
-            <div className="summary-card-value text-gain">
-              {status.stats.collected} collected
-            </div>
-          </div>
-          <div className="summary-card">
-            <div className="summary-card-label">Failed</div>
-            <div className="summary-card-value text-loss">
-              {status.stats.failed}
-            </div>
-          </div>
-          <div className="summary-card">
-            <div className="summary-card-label">Duration</div>
-            <div className="summary-card-value">
-              {formatDuration(status.stats.duration_seconds)}
-            </div>
+      {loading ? (
+        <div className="card">
+          <div className="loading-container">
+            <div className="loading-spinner"></div>
+            <span className="mt-2">Loading database stats...</span>
           </div>
         </div>
+      ) : error ? (
+        <div className="card">
+          <div className="empty-state">
+            <AlertCircle size={48} className="text-loss mb-4" />
+            <h2 className="text-lg font-medium mb-2">Error Loading Stats</h2>
+            <p className="text-muted mb-4">{error}</p>
+            <button onClick={fetchStats} className="btn btn-primary">
+              <RefreshCw size={14} />
+              Retry
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="summary-grid">
+            <div className="summary-card">
+              <div className="summary-card-icon">
+                <Database size={18} />
+              </div>
+              <div className="summary-card-label">Stocks Tracked</div>
+              <div className="summary-card-value">
+                {dbStats?.stock_count?.toLocaleString() || 0}
+              </div>
+            </div>
+            <div className="summary-card">
+              <div className="summary-card-icon">
+                <CheckCircle size={18} />
+              </div>
+              <div className="summary-card-label">Price Records (Est.)</div>
+              <div className="summary-card-value">
+                {dbStats?.price_count?.toLocaleString() || 0}
+              </div>
+            </div>
+            <div className="summary-card">
+              <div className="summary-card-icon">
+                <Clock size={18} />
+              </div>
+              <div className="summary-card-label">Date Range</div>
+              <div className="summary-card-value text-sm">{dbStats?.date_range || 'N/A'}</div>
+            </div>
+            <div className="summary-card">
+              <div className="summary-card-icon">
+                <ExternalLink size={18} />
+              </div>
+              <div className="summary-card-label">Actions Workflow</div>
+              <div className="summary-card-value">
+                <a
+                  href="https://github.com/smtsrst/nepse-stockmarket-v2/actions"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-accent"
+                >
+                  View →
+                </a>
+              </div>
+            </div>
+          </div>
+
+          <div className="card mt-4">
+            <div className="card-header">
+              <span className="flex items-center gap-2">
+                <Database size={14} />
+                DATA COVERAGE (Sample)
+              </span>
+            </div>
+            <div className="table-container">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Symbol</th>
+                    <th style={{ textAlign: 'right' }}>Records</th>
+                    <th style={{ textAlign: 'right' }}>From</th>
+                    <th style={{ textAlign: 'right' }}>To</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {symbols.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={4}
+                        style={{ textAlign: 'center', padding: 32 }}
+                        className="text-muted"
+                      >
+                        No historical data available yet
+                      </td>
+                    </tr>
+                  ) : (
+                    symbols.map((s) => (
+                      <tr key={s.symbol}>
+                        <td className="font-mono font-semibold">{s.symbol}</td>
+                        <td className="font-mono" style={{ textAlign: 'right' }}>
+                          {s.records}
+                        </td>
+                        <td className="font-mono text-secondary" style={{ textAlign: 'right' }}>
+                          {s.first_date}
+                        </td>
+                        <td className="font-mono text-secondary" style={{ textAlign: 'right' }}>
+                          {s.last_date}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <div className="text-xs text-muted p-2 border-t border-border">
+              Showing sample of {symbols.length} stocks. Run backfill to get full coverage.
+            </div>
+          </div>
+
+          <div className="card mt-4">
+            <div className="card-header">
+              <span className="flex items-center gap-2">
+                <Database size={14} />
+                MANUAL COLLECTION
+              </span>
+            </div>
+            <div className="card-body">
+              <p className="text-sm text-secondary mb-4">
+                To collect data manually, run the following commands:
+              </p>
+              <div className="code-block">
+                <code>
+                  cd backend
+                  <br />
+                  source venv/bin/activate
+                  <br />
+                  python scripts/collect_live.py # Live prices
+                  <br />
+                  python scripts/backfill.py --days 1095 # 3 years history
+                </code>
+              </div>
+            </div>
+          </div>
+        </>
       )}
-
-      <div className="cards-grid mt-4">
-        <div className="card">
-          <div className="card-header">
-            <span className="flex items-center gap-2">
-              <Database size={14} />
-              DATABASE INFO
-            </span>
-          </div>
-          <div className="card-body">
-            {dbStats ? (
-              <div className="info-list">
-                <div className="info-row">
-                  <span className="info-label">Total Records:</span>
-                  <span className="info-value">{dbStats.total_records.toLocaleString()}</span>
-                </div>
-                <div className="info-row">
-                  <span className="info-label">Unique Symbols:</span>
-                  <span className="info-value">{dbStats.unique_symbols}</span>
-                </div>
-                <div className="info-row">
-                  <span className="info-label">Date Range:</span>
-                  <span className="info-value font-mono">{dbStats.date_range}</span>
-                </div>
-              </div>
-            ) : (
-              <div className="loading-container"><div className="loading-spinner"></div></div>
-            )}
-          </div>
-        </div>
-
-        <div className="card">
-          <div className="card-header">
-            <span className="flex items-center gap-2">
-              <Brain size={14} />
-              ML MODEL
-            </span>
-          </div>
-          <div className="card-body">
-            <div className="info-list">
-              <div className="info-row">
-                <span className="info-label">Status:</span>
-                <span className="info-value text-muted">Connect to backend</span>
-              </div>
-              <div className="info-row">
-                <span className="info-label">Retrain:</span>
-                <span className="info-value text-muted">Backend required</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="card mt-4">
-        <div className="card-header">
-          <span className="flex items-center gap-2">
-            <Database size={14} />
-            STORED SYMBOLS
-          </span>
-        </div>
-        <div className="table-container">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Symbol</th>
-                <th style={{ textAlign: 'right' }}>Records</th>
-                <th style={{ textAlign: 'right' }}>Date Range</th>
-              </tr>
-            </thead>
-            <tbody>
-              {symbols.length === 0 ? (
-                <tr>
-                  <td colSpan={3} style={{ textAlign: 'center', padding: 32 }} className="text-muted">
-                    No data. Click "Update Now" to collect.
-                  </td>
-                </tr>
-              ) : symbols.map((s) => (
-                <tr key={s.symbol}>
-                  <td className="font-mono font-semibold">{s.symbol}</td>
-                  <td className="font-mono" style={{ textAlign: 'right' }}>{s.records}</td>
-                  <td className="font-mono text-secondary" style={{ textAlign: 'right' }}>
-                    {s.from} - {s.to}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
 
       <style>{`
         .data-management {
@@ -309,58 +287,47 @@ export default function DataManagement() {
           margin: 0 auto;
         }
 
-        .stats-grid {
-          grid-template-columns: repeat(3, 1fr);
+        .info-box {
+          display: flex;
+          gap: 12px;
+          padding: 16px;
+          background: var(--bg-tertiary);
+          border-radius: 6px;
         }
 
-        .cards-grid {
-          display: grid;
-          grid-template-columns: repeat(2, 1fr);
-          gap: 16px;
+        .info-box .text-accent {
+          flex-shrink: 0;
+          margin-top: 2px;
+        }
+
+        .loading-container {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          padding: 48px;
+          gap: 12px;
+        }
+
+        .code-block {
+          background: var(--bg-tertiary);
+          border: 1px solid var(--border);
+          border-radius: 4px;
+          padding: 16px;
+        }
+
+        .code-block code {
+          font-family: 'JetBrains Mono', monospace;
+          font-size: 0.8rem;
+          color: var(--accent);
+          white-space: pre;
+          display: block;
+          line-height: 1.6;
         }
 
         .summary-card-icon {
           color: var(--text-muted);
           margin-bottom: 4px;
-        }
-
-        .info-list {
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-        }
-
-        .info-row {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-        }
-
-        .info-label {
-          font-size: 0.8rem;
-          color: var(--text-muted);
-        }
-
-        .info-value {
-          font-size: 0.9rem;
-        }
-
-        .code {
-          padding: 2px 8px;
-          background: var(--bg-tertiary);
-          border-radius: 3px;
-          font-family: 'JetBrains Mono', monospace;
-          font-size: 0.8rem;
-        }
-
-        @media (max-width: 768px) {
-          .cards-grid {
-            grid-template-columns: 1fr;
-          }
-
-          .stats-grid {
-            grid-template-columns: 1fr;
-          }
         }
       `}</style>
     </div>

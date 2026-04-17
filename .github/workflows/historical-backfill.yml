@@ -39,10 +39,10 @@ jobs:
           pip install -r requirements.txt
           pip install python-dotenv
 
-      - name: Run batched backfill
+      - name: Run Merolagani backfill
         run: |
           cd backend
-          python scripts/backfill_merolagani.py 2
+          python scripts/merolagani_scraper.py 2
         env:
           NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
 
