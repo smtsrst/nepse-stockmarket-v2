@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     DEBUG: bool = True
 
     # Database
-    DATABASE_URL: str = "sqlite:///./nepse.db"
+    DATABASE_URL: str = ""  # Set via environment variable
 
     # JWT settings
     SECRET_KEY: str = "change-this-in-production-to-a-secure-random-string"
