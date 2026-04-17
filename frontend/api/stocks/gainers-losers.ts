@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-const NEPSE_API_BASE = 'https://nepseapi.surajrimal.dev';
+const YONEPSE_API = 'https://shubhamnpk.github.io/yonepse/data';
 
 // Cache for 5 minutes
 let cache: {
@@ -31,42 +31,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    // Fetch from both endpoints in parallel
-    const [gainersRes, losersRes] = await Promise.all([
-      fetch(`${NEPSE_API_BASE}/TopGainers?limit=20`),
-      fetch(`${NEPSE_API_BASE}/TopLosers?limit=20`),
-    ]);
+    // Fetch from YONEPSE API
+    const response = await fetch(`${YONEPSE_API}/nepse_data.json`);
 
-    if (!gainersRes.ok || !losersRes.ok) {
-      throw new Error(`NEPSE API error: ${gainersRes.status} / ${losersRes.status}`);
+    if (!response.ok) {
+      throw new Error(`YONEPSE API error: ${response.status}`);
     }
 
-    const gainersData = await gainersRes.json();
-    const losersData = await losersRes.json();
+    const data = await response.json();
+    const stocks = data || [];
 
-    // Format gainers
-    const gainers = (gainersData.data || gainersData || []).map((s: any) => ({
-      symbol: s.symbol || s.scripSymbol || '',
-      name: s.companyName || s.company || '',
-      lastTradedPrice: parseFloat(s.closePrice || s.lastTradedPrice || 0),
-      percentageChange: parseFloat(s.percentageChange || 0),
+    // Format stocks
+    const formatted = stocks.map((s: any) => ({
+      symbol: s.symbol || '',
+      name: s.name || '',
+      lastTradedPrice: parseFloat(s.ltp || 0),
+      percentageChange: parseFloat(s.percent_change || 0),
       volume: parseInt(s.volume || 0),
-      openPrice: parseFloat(s.openPrice || 0),
-      highPrice: parseFloat(s.highPrice || s.high || 0),
-      lowPrice: parseFloat(s.lowPrice || s.low || 0),
+      openPrice: parseFloat(s.ltp || 0) - parseFloat(s.change || 0),
+      highPrice: parseFloat(s.high || 0),
+      lowPrice: parseFloat(s.low || 0),
     }));
 
-    // Format losers
-    const losers = (losersData.data || losersData || []).map((s: any) => ({
-      symbol: s.symbol || s.scripSymbol || '',
-      name: s.companyName || s.company || '',
-      lastTradedPrice: parseFloat(s.closePrice || s.lastTradedPrice || 0),
-      percentageChange: parseFloat(s.percentageChange || 0),
-      volume: parseInt(s.volume || 0),
-      openPrice: parseFloat(s.openPrice || 0),
-      highPrice: parseFloat(s.highPrice || s.high || 0),
-      lowPrice: parseFloat(s.lowPrice || s.low || 0),
-    }));
+    // Sort for gainers and losers
+    const sorted = [...formatted].sort((a, b) => b.percentageChange - a.percentageChange);
+    const gainers = sorted.filter(s => s.percentageChange > 0).slice(0, 20);
+    const losers = sorted.filter(s => s.percentageChange < 0).slice(-20).reverse();
 
     // Cache result
     cache = {

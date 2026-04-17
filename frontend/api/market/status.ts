@@ -1,5 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
+const YONEPSE_API = 'https://shubhamnpk.github.io/yonepse/data';
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -10,26 +12,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    // Check if market is open (NEPSE hours: 10:00 AM - 3:00 PM NPT, Sunday-Thursday)
-    const now = new Date();
-    
-    // Convert to Nepal time (UTC+5:45)
-    const nepalOffset = 5 * 60 + 45;
-    const nepalTime = new Date(now.getTime() + nepalOffset * 60 * 1000);
-    
-    const hour = nepalTime.getUTCHours();
-    const day = nepalTime.getUTCDay();
-    
-    // NEPSE is open Sunday-Thursday (0 = Sunday, 4 = Thursday)
-    const isWeekday = day >= 0 && day <= 4;
-    const isMarketHours = hour >= 10 && hour < 15;
-    
-    const isOpen = isWeekday && isMarketHours;
+    const response = await fetch(`${YONEPSE_API}/market_status.json`);
+
+    if (!response.ok) {
+      throw new Error(`YONEPSE API error: ${response.status}`);
+    }
+
+    const data = await response.json();
 
     return res.status(200).json({
-      is_open: isOpen,
-      message: isOpen ? 'Market is open' : 'Market is closed',
-      nepal_time: nepalTime.toISOString(),
+      is_open: data.is_open || false,
+      message: data.is_open ? 'Market is open' : 'Market is closed',
+      last_checked: data.last_checked,
     });
   } catch (error) {
     console.error('Error checking market status:', error);

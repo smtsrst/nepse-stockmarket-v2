@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-const NEPSE_API_BASE = 'https://nepseapi.surajrimal.dev';
+const YONEPSE_API = 'https://shubhamnpk.github.io/yonepse/data';
 
 // Cache for market data (5 minutes)
 let marketCache: {
@@ -37,31 +37,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json(stocks.slice(0, Number(limit)));
     }
 
-    // Fetch from NEPSE API
-    const response = await fetch(`${NEPSE_API_BASE}/PriceVolume?limit=500`, {
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
+    // Fetch from YONEPSE API
+    const response = await fetch(`${YONEPSE_API}/nepse_data.json`);
 
     if (!response.ok) {
-      throw new Error(`NEPSE API error: ${response.status}`);
+      throw new Error(`YONEPSE API error: ${response.status}`);
     }
 
     const data = await response.json();
-    let stocks = data.data || data || [];
+    let stocks = data || [];
 
-    // Format response
+    // Format response to match our interface
     const formattedStocks = stocks.map((s: any) => ({
-      symbol: s.symbol || s.scripSymbol || '',
-      name: s.companyName || s.company || '',
-      lastTradedPrice: parseFloat(s.closePrice || s.lastTradedPrice || s.price || 0),
-      percentageChange: parseFloat(s.percentageChange || 0),
+      symbol: s.symbol || '',
+      name: s.name || '',
+      lastTradedPrice: parseFloat(s.ltp || 0),
+      percentageChange: parseFloat(s.percent_change || 0),
       volume: parseInt(s.volume || 0),
-      openPrice: parseFloat(s.openPrice || 0),
-      highPrice: parseFloat(s.highPrice || s.high || 0),
-      lowPrice: parseFloat(s.lowPrice || s.low || 0),
-      closePrice: parseFloat(s.closePrice || 0),
+      openPrice: parseFloat(s.ltp || 0) - parseFloat(s.change || 0),
+      highPrice: parseFloat(s.high || 0),
+      lowPrice: parseFloat(s.low || 0),
+      closePrice: parseFloat(s.ltp || 0),
       sector: s.sector || '',
     }));
 
