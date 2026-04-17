@@ -62,8 +62,10 @@ interface Prediction {
   prediction: string;
   confidence: number;
   current_price: number;
-  predicted_price: number;
-  change_percent: number;
+  predicted_price?: number;
+  change_percent?: number;
+  prob_up?: number;
+  prob_down?: number;
 }
 
 type TimeRange = '1W' | '1M' | '3M' | '6M' | '1Y' | 'ALL';
@@ -541,30 +543,51 @@ export default function StockDetail() {
                   <div className="text-text-secondary text-xs mb-1">Current Price</div>
                   <div className="text-text-primary font-semibold">Rs. {formatNumber(prediction.current_price)}</div>
                 </div>
-                <div className="p-3 bg-bg-tertiary rounded-lg text-center">
-                  <div className="text-text-secondary text-xs mb-1">Predicted Price</div>
-                  <div className={`font-semibold ${
-                    prediction.change_percent >= 0 ? 'text-gain' : 'text-loss'
-                  }`}>
-                    Rs. {formatNumber(prediction.predicted_price)}
+                {prediction.predicted_price && (
+                  <div className="p-3 bg-bg-tertiary rounded-lg text-center">
+                    <div className="text-text-secondary text-xs mb-1">Predicted Price</div>
+                    <div className={`font-semibold ${
+                      (prediction.change_percent || 0) >= 0 ? 'text-gain' : 'text-loss'
+                    }`}>
+                      Rs. {formatNumber(prediction.predicted_price)}
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
 
+              {/* Probability */}
+              {(prediction.prob_up !== undefined || prediction.prob_down !== undefined) && (
+                <div className="p-4 bg-bg-tertiary rounded-xl">
+                  <div className="text-text-secondary text-sm mb-2">Probability</div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="text-center">
+                      <div className="text-gain font-semibold">{((prediction.prob_up || 0) * 100).toFixed(1)}%</div>
+                      <div className="text-text-secondary text-xs">Up</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-loss font-semibold">{((prediction.prob_down || 0) * 100).toFixed(1)}%</div>
+                      <div className="text-text-secondary text-xs">Down</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Expected Change */}
-              <div className={`p-4 rounded-xl flex items-center justify-between ${
-                prediction.change_percent >= 0 ? 'bg-gain/10' : 'bg-loss/10'
-              }`}>
-                <div className="flex items-center gap-3">
-                  <Calendar className="w-5 h-5 text-text-secondary" />
-                  <span className="text-text-secondary">Expected Change</span>
-                </div>
-                <div className={`text-xl font-bold ${
-                  prediction.change_percent >= 0 ? 'text-gain' : 'text-loss'
+              {prediction.change_percent !== undefined && (
+                <div className={`p-4 rounded-xl flex items-center justify-between ${
+                  prediction.change_percent >= 0 ? 'bg-gain/10' : 'bg-loss/10'
                 }`}>
-                  {prediction.change_percent >= 0 ? '+' : ''}{prediction.change_percent.toFixed(2)}%
+                  <div className="flex items-center gap-3">
+                    <Calendar className="w-5 h-5 text-text-secondary" />
+                    <span className="text-text-secondary">Expected Change</span>
+                  </div>
+                  <div className={`text-xl font-bold ${
+                    prediction.change_percent >= 0 ? 'text-gain' : 'text-loss'
+                  }`}>
+                    {prediction.change_percent >= 0 ? '+' : ''}{prediction.change_percent.toFixed(2)}%
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Disclaimer */}
               <div className="text-xs text-text-secondary text-center p-3 bg-bg-tertiary rounded-lg">
