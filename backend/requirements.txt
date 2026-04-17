@@ -1,34 +1,34 @@
 # NEPSE Stock Dashboard V2 - Backend Dependencies
 
-# Core API & Server (REQUIRED - must be first)
-fastapi==0.104.1
-uvicorn==0.27.0
-python-multipart==0.0.9
+# Core API & Server
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
+python-multipart>=0.0.6
 
 # Database
-sqlalchemy==2.0.25
-alembic==1.13.1
-psycopg2-binary==2.9.9
+sqlalchemy>=2.0.0
+alembic>=1.11.0
+psycopg2-binary>=2.9.0
 
 # Authentication
-python-jose==3.3.0
-passlib==1.7.4
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
 
 # Data Processing
-pandas==2.2.0
-numpy==1.26.3
+pandas>=1.5.0
+numpy>=1.21.0
 
 # ML
-scikit-learn==1.4.0
-scipy==1.12.0
+scikit-learn>=1.0.0
+scipy>=1.7.0
 
 # NEPSE API
-nepse-data-api==1.0.0.1
+nepse-data-api>=1.0.0
 
 # Validation
-pydantic==2.6.0
-pydantic-settings==2.1.0
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
 
 # Utilities
-python-dotenv==1.0.1
-requests==2.31.0
+python-dotenv>=1.0.0
+requests>=2.28.0
