@@ -36,12 +36,22 @@ export interface Prediction {
 
 export { sql, pool };
 
+export function isDbConfigured(): boolean {
+  return !!sql;
+}
+
 export async function query<T>(text: string, params?: unknown[]): Promise<T[]> {
   if (!sql) {
-    throw new Error('Database not configured');
+    console.warn('Database not configured, returning empty results');
+    return [];
   }
-  const result = await sql(text, params);
-  return result as T[];
+  try {
+    const result = await sql(text, params);
+    return result as T[];
+  } catch (error) {
+    console.error('Database query error:', error);
+    return [];
+  }
 }
 
 export async function queryOne<T>(text: string, params?: unknown[]): Promise<T | null> {
