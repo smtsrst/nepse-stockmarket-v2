@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import gainersLosersHandler from '../stocks/gainers-losers';
+import handler from './gainers-losers';
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  return gainersLosersHandler(req, res);
+export default async function losersHandler(req: VercelRequest, res: VercelResponse) {
+  return handler(req, res);
 }
