@@ -1,6 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { query, isDbConfigured } from '../db';
-import { StockPrice } from '../db';
+import { query, isDbConfigured } from './db';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -13,9 +12,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     if (!isDbConfigured()) {
-      return res.status(503).json({ 
-        error: 'Database not configured'
-      });
+      return res.status(503).json({ error: 'Database not configured' });
     }
 
     const symbol = req.query.symbol as string;
@@ -25,7 +22,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: 'Symbol parameter is required' });
     }
 
-    const stockPrices = await query<StockPrice>(
+    const stockPrices = await query<any>(
       `SELECT * FROM stock_prices 
        WHERE symbol = $1 
        ORDER BY date DESC 
@@ -45,7 +42,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       days,
       source: 'db',
       record_count: stockPrices.length,
-      history: stockPrices.map(p => ({
+      history: stockPrices.map((p: any) => ({
         date: p.date,
         open: p.open,
         high: p.high,
@@ -56,9 +53,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   } catch (error: any) {
     console.error('Error:', error);
-    return res.status(500).json({ 
-      error: 'Failed to fetch history',
-      details: error.message
-    });
+    return res.status(500).json({ error: 'Failed to fetch history', details: error.message });
   }
 }
