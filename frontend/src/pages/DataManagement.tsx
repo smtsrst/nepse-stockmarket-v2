@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { RefreshCw, Database, Clock, CheckCircle, AlertCircle, Loader, XCircle, Brain } from 'lucide-react';
 
+const API_URL = import.meta.env.VITE_API_URL || '';
+
 interface DataStatus {
   running: boolean;
   last_collection: string | null;
@@ -11,19 +13,6 @@ interface DataStatus {
   } | null;
   db_records: number;
   db_symbols: number;
-}
-
-interface MLStatus {
-  running: boolean;
-  last_retrain: string | null;
-  stats: Record<string, unknown>;
-  next_retrain_in_days: number;
-}
-
-interface ModelStatus {
-  available: boolean;
-  trained_at: string;
-  path: string;
 }
 
 interface DatabaseStats {
@@ -41,54 +30,26 @@ interface SymbolInfo {
 
 export default function DataManagement() {
   const [status, setStatus] = useState<DataStatus | null>(null);
-  const [mlStatus, setMlStatus] = useState<MLStatus | null>(null);
-  const [modelStatus, setModelStatus] = useState<ModelStatus | null>(null);
   const [dbStats, setDbStats] = useState<DatabaseStats | null>(null);
   const [symbols, setSymbols] = useState<SymbolInfo[]>([]);
   const [collecting, setCollecting] = useState(false);
-  const [training, setTraining] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchStatus = async () => {
     try {
-      const res = await fetch('/api/data/status');
+      const res = await fetch(`${API_URL}/api/data/status`);
       if (!res.ok) throw new Error('API unavailable');
       const data = await res.json();
       setStatus(data);
       setError(null);
     } catch (err) {
-      setError('Backend API not available. Make sure server is running.');
-      console.error('Failed to fetch status:', err);
-    }
-  };
-
-  const fetchMLStatus = async () => {
-    try {
-      const res = await fetch('/api/predict/scheduler/status');
-      if (res.ok) {
-        const data = await res.json();
-        setMlStatus(data);
-      }
-    } catch (err) {
-      console.error('Failed to fetch ML status:', err);
-    }
-  };
-
-  const fetchModelStatus = async () => {
-    try {
-      const res = await fetch('/api/predict/status');
-      if (res.ok) {
-        const data = await res.json();
-        setModelStatus(data);
-      }
-    } catch (err) {
-      console.error('Failed to fetch model status:', err);
+      setError('Backend API not available. Connect to local backend to manage data.');
     }
   };
 
   const fetchDbStats = async () => {
     try {
-      const res = await fetch('/api/data/stats');
+      const res = await fetch(`${API_URL}/api/data/stats`);
       if (!res.ok) throw new Error('API unavailable');
       const data = await res.json();
       setDbStats(data);
@@ -99,7 +60,7 @@ export default function DataManagement() {
 
   const fetchSymbols = async () => {
     try {
-      const res = await fetch('/api/data/symbols?limit=50');
+      const res = await fetch(`${API_URL}/api/data/symbols?limit=50`);
       if (!res.ok) throw new Error('API unavailable');
       const data = await res.json();
       setSymbols(data.symbols || []);
@@ -108,13 +69,13 @@ export default function DataManagement() {
     }
   };
 
-  const triggerCollection = async (full: boolean = false) => {
+  const triggerCollection = async () => {
     setCollecting(true);
     try {
-      const res = await fetch('/api/data/collect', {
+      const res = await fetch(`${API_URL}/api/data/collect`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ full: full }),
+        body: JSON.stringify({ full: false }),
       });
       if (!res.ok) throw new Error('Collection failed');
       await fetchStatus();
@@ -126,33 +87,13 @@ export default function DataManagement() {
     }
   };
 
-  const triggerTraining = async () => {
-    setTraining(true);
-    try {
-      const res = await fetch('/api/predict/train', {
-        method: 'POST',
-      });
-      if (!res.ok) throw new Error('Training failed');
-      await fetchModelStatus();
-      await fetchMLStatus();
-    } catch (err) {
-      console.error('Failed to trigger training:', err);
-    } finally {
-      setTraining(false);
-    }
-  };
-
   useEffect(() => {
     fetchStatus();
-    fetchMLStatus();
-    fetchModelStatus();
     fetchDbStats();
     fetchSymbols();
     
     const interval = setInterval(() => {
       fetchStatus();
-      fetchMLStatus();
-      fetchModelStatus();
     }, 30000);
     return () => clearInterval(interval);
   }, []);
@@ -169,207 +110,259 @@ export default function DataManagement() {
 
   if (error) {
     return (
-      <div className="p-6">
-        <h1 className="text-2xl font-bold text-text-primary mb-6">Data Management</h1>
-        <div className="p-8 bg-bg-secondary rounded-lg border border-loss/50 text-center">
-          <XCircle className="w-12 h-12 text-loss mx-auto mb-4" />
-          <h2 className="text-xl font-semibold text-text-primary mb-2">Backend Unavailable</h2>
-          <p className="text-text-secondary mb-4">{error}</p>
-          <p className="text-text-secondary text-sm">
-            Start the backend server with: <code className="bg-bg-tertiary px-2 py-1 rounded">python -m uvicorn app.main:app --reload</code>
-          </p>
+      <div className="data-management">
+        <div className="dashboard-header">
+          <div className="header-left">
+            <h1 className="page-title">DATA MANAGEMENT</h1>
+          </div>
+        </div>
+        <div className="card">
+          <div className="empty-state">
+            <XCircle size={48} className="text-loss mb-4" />
+            <h2 className="text-lg font-medium mb-2">Backend Unavailable</h2>
+            <p className="text-muted mb-4">{error}</p>
+            <p className="text-muted text-sm">
+              Start the backend server with: <code className="code">python -m uvicorn app.main:app --reload</code>
+            </p>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-text-primary">Data Management</h1>
-        <button
-          onClick={() => triggerCollection(false)}
-          disabled={collecting}
-          className="flex items-center gap-2 px-4 py-2 bg-accent text-bg-primary rounded-lg hover:bg-accent/90 transition-colors disabled:opacity-50"
-        >
-          {collecting ? <Loader className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-          {collecting ? 'Collecting...' : 'Update Now'}
-        </button>
+    <div className="data-management">
+      <div className="dashboard-header">
+        <div className="header-left">
+          <h1 className="page-title">DATA MANAGEMENT</h1>
+        </div>
+        <div className="header-right">
+          <button
+            onClick={triggerCollection}
+            disabled={collecting}
+            className="btn btn-primary"
+          >
+            {collecting ? <Loader size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+            {collecting ? 'Collecting...' : 'Update Now'}
+          </button>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <div className="p-4 bg-bg-secondary rounded-lg border border-border">
-          <div className="flex items-center gap-2 text-text-secondary mb-2">
-            <Database className="w-4 h-4" />
-            Database Records
+      <div className="summary-grid">
+        <div className="summary-card">
+          <div className="summary-card-icon">
+            <Database size={18} />
           </div>
-          <div className="text-2xl font-bold text-text-primary">
+          <div className="summary-card-label">Database Records</div>
+          <div className="summary-card-value">
             {dbStats?.total_records?.toLocaleString() || status?.db_records?.toLocaleString() || 0}
           </div>
         </div>
-
-        <div className="p-4 bg-bg-secondary rounded-lg border border-border">
-          <div className="flex items-center gap-2 text-text-secondary mb-2">
-            <CheckCircle className="w-4 h-4" />
-            Symbols Tracked
+        <div className="summary-card">
+          <div className="summary-card-icon">
+            <CheckCircle size={18} />
           </div>
-          <div className="text-2xl font-bold text-text-primary">
+          <div className="summary-card-label">Symbols Tracked</div>
+          <div className="summary-card-value">
             {dbStats?.unique_symbols || status?.db_symbols || 0}
           </div>
         </div>
-
-        <div className="p-4 bg-bg-secondary rounded-lg border border-border">
-          <div className="flex items-center gap-2 text-text-secondary mb-2">
-            <Clock className="w-4 h-4" />
-            Last Collection
+        <div className="summary-card">
+          <div className="summary-card-icon">
+            <Clock size={18} />
           </div>
-          <div className="text-lg font-semibold text-text-primary">
+          <div className="summary-card-label">Last Collection</div>
+          <div className="summary-card-value text-sm">
             {formatDate(status?.last_collection || null)}
           </div>
         </div>
-
-        <div className="p-4 bg-bg-secondary rounded-lg border border-border">
-          <div className="flex items-center gap-2 text-text-secondary mb-2">
-            {mlStatus?.running ? (
-              <CheckCircle className="w-4 h-4 text-gain" />
+        <div className="summary-card">
+          <div className="summary-card-icon">
+            {status?.running ? (
+              <CheckCircle size={18} className="text-gain" />
             ) : (
-              <AlertCircle className="w-4 h-4 text-loss" />
+              <AlertCircle size={18} className="text-loss" />
             )}
-            Scheduler Status
           </div>
-          <div className={`text-lg font-semibold ${mlStatus?.running ? 'text-gain' : 'text-loss'}`}>
-            {mlStatus?.running ? 'Running' : 'Stopped'}
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <div className="p-4 bg-bg-secondary rounded-lg border border-border">
-          <div className="flex items-center gap-2 text-text-secondary mb-2">
-            <Brain className="w-4 h-4" />
-            ML Model Status
-          </div>
-          <div className={`text-lg font-semibold ${modelStatus?.available ? 'text-gain' : 'text-loss'}`}>
-            {modelStatus?.available ? 'Trained' : 'Not Available'}
+          <div className="summary-card-label">Status</div>
+          <div className={`summary-card-value ${status?.running ? 'text-gain' : 'text-loss'}`}>
+            {status?.running ? 'Running' : 'Idle'}
           </div>
         </div>
-        <div className="p-4 bg-bg-secondary rounded-lg border border-border">
-          <div className="flex items-center gap-2 text-text-secondary mb-2">
-            <Clock className="w-4 h-4" />
-            Last Trained
-          </div>
-          <div className="text-lg font-semibold text-text-primary">
-            {modelStatus?.trained_at ? new Date(modelStatus.trained_at).toLocaleString() : 'Never'}
-          </div>
-        </div>
-        <div className="p-4 bg-bg-secondary rounded-lg border border-border">
-          <div className="flex items-center gap-2 text-text-secondary mb-2">
-            <Clock className="w-4 h-4" />
-            Next Auto-Retrain
-          </div>
-          <div className="text-lg font-semibold text-text-primary">
-            {mlStatus?.next_retrain_in_days ?? 7} days
-          </div>
-        </div>
-      </div>
-
-      <div className="flex gap-4 mb-6">
-        <button
-          onClick={triggerTraining}
-          disabled={training}
-          className="flex items-center gap-2 px-4 py-2 bg-accent text-bg-primary rounded-lg hover:bg-accent/90 transition-colors disabled:opacity-50"
-        >
-          {training ? <Loader className="w-4 h-4 animate-spin" /> : <Brain className="w-4 h-4" />}
-          {training ? 'Training...' : 'Retrain ML Model'}
-        </button>
       </div>
 
       {status?.stats && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <div className="p-4 bg-bg-secondary rounded-lg border border-border">
-            <div className="text-text-secondary text-sm">Last Collection Stats</div>
-            <div className="text-xl font-bold text-gain">{status.stats.collected} collected</div>
+        <div className="summary-grid mt-4 stats-grid">
+          <div className="summary-card">
+            <div className="summary-card-label">Last Collection Stats</div>
+            <div className="summary-card-value text-gain">
+              {status.stats.collected} collected
+            </div>
           </div>
-          <div className="p-4 bg-bg-secondary rounded-lg border border-border">
-            <div className="text-text-secondary text-sm">Failed</div>
-            <div className="text-xl font-bold text-loss">{status.stats.failed}</div>
+          <div className="summary-card">
+            <div className="summary-card-label">Failed</div>
+            <div className="summary-card-value text-loss">
+              {status.stats.failed}
+            </div>
           </div>
-          <div className="p-4 bg-bg-secondary rounded-lg border border-border">
-            <div className="text-text-secondary text-sm">Duration</div>
-            <div className="text-xl font-bold text-text-primary">
+          <div className="summary-card">
+            <div className="summary-card-label">Duration</div>
+            <div className="summary-card-value">
               {formatDuration(status.stats.duration_seconds)}
             </div>
           </div>
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-bg-secondary rounded-lg border border-border overflow-hidden">
-          <div className="p-4 bg-bg-tertiary border-b border-border">
-            <h2 className="font-semibold text-text-primary">Database Info</h2>
+      <div className="cards-grid mt-4">
+        <div className="card">
+          <div className="card-header">
+            <span className="flex items-center gap-2">
+              <Database size={14} />
+              DATABASE INFO
+            </span>
           </div>
-          <div className="p-4">
+          <div className="card-body">
             {dbStats ? (
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <span className="text-text-secondary">Total Records:</span>
-                  <span className="text-text-primary">{dbStats.total_records.toLocaleString()}</span>
+              <div className="info-list">
+                <div className="info-row">
+                  <span className="info-label">Total Records:</span>
+                  <span className="info-value">{dbStats.total_records.toLocaleString()}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-text-secondary">Unique Symbols:</span>
-                  <span className="text-text-primary">{dbStats.unique_symbols}</span>
+                <div className="info-row">
+                  <span className="info-label">Unique Symbols:</span>
+                  <span className="info-value">{dbStats.unique_symbols}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-text-secondary">Date Range:</span>
-                  <span className="text-text-primary">{dbStats.date_range}</span>
+                <div className="info-row">
+                  <span className="info-label">Date Range:</span>
+                  <span className="info-value font-mono">{dbStats.date_range}</span>
                 </div>
               </div>
             ) : (
-              <div className="text-text-secondary">Loading...</div>
+              <div className="loading-container"><div className="loading-spinner"></div></div>
             )}
           </div>
         </div>
 
-        <div className="bg-bg-secondary rounded-lg border border-border overflow-hidden">
-          <div className="p-4 bg-bg-tertiary border-b border-border flex items-center justify-between">
-            <h2 className="font-semibold text-text-primary">Stored Symbols</h2>
-            <button
-              onClick={() => triggerCollection(true)}
-              disabled={collecting}
-              className="text-sm px-3 py-1 bg-accent/20 text-accent rounded hover:bg-accent/30 disabled:opacity-50"
-            >
-              {collecting ? 'Collecting...' : 'Full Collection'}
-            </button>
+        <div className="card">
+          <div className="card-header">
+            <span className="flex items-center gap-2">
+              <Brain size={14} />
+              ML MODEL
+            </span>
           </div>
-          <div className="max-h-64 overflow-y-auto">
-            <table className="w-full">
-              <thead className="bg-bg-tertiary sticky top-0">
-                <tr>
-                  <th className="px-4 py-2 text-left text-text-secondary font-medium">Symbol</th>
-                  <th className="px-4 py-2 text-right text-text-secondary font-medium">Records</th>
-                  <th className="px-4 py-2 text-right text-text-secondary font-medium">Date Range</th>
-                </tr>
-              </thead>
-              <tbody>
-                {symbols.map((s) => (
-                  <tr key={s.symbol} className="border-t border-border">
-                    <td className="px-4 py-2 text-text-primary font-medium">{s.symbol}</td>
-                    <td className="px-4 py-2 text-right text-text-secondary">{s.records}</td>
-                    <td className="px-4 py-2 text-right text-text-secondary text-sm">
-                      {s.from} - {s.to}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {symbols.length === 0 && (
-              <div className="p-4 text-center text-text-secondary">
-                No data. Click "Update Now" to collect.
+          <div className="card-body">
+            <div className="info-list">
+              <div className="info-row">
+                <span className="info-label">Status:</span>
+                <span className="info-value text-muted">Connect to backend</span>
               </div>
-            )}
+              <div className="info-row">
+                <span className="info-label">Retrain:</span>
+                <span className="info-value text-muted">Backend required</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
+
+      <div className="card mt-4">
+        <div className="card-header">
+          <span className="flex items-center gap-2">
+            <Database size={14} />
+            STORED SYMBOLS
+          </span>
+        </div>
+        <div className="table-container">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Symbol</th>
+                <th style={{ textAlign: 'right' }}>Records</th>
+                <th style={{ textAlign: 'right' }}>Date Range</th>
+              </tr>
+            </thead>
+            <tbody>
+              {symbols.length === 0 ? (
+                <tr>
+                  <td colSpan={3} style={{ textAlign: 'center', padding: 32 }} className="text-muted">
+                    No data. Click "Update Now" to collect.
+                  </td>
+                </tr>
+              ) : symbols.map((s) => (
+                <tr key={s.symbol}>
+                  <td className="font-mono font-semibold">{s.symbol}</td>
+                  <td className="font-mono" style={{ textAlign: 'right' }}>{s.records}</td>
+                  <td className="font-mono text-secondary" style={{ textAlign: 'right' }}>
+                    {s.from} - {s.to}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <style>{`
+        .data-management {
+          max-width: 1200px;
+          margin: 0 auto;
+        }
+
+        .stats-grid {
+          grid-template-columns: repeat(3, 1fr);
+        }
+
+        .cards-grid {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 16px;
+        }
+
+        .summary-card-icon {
+          color: var(--text-muted);
+          margin-bottom: 4px;
+        }
+
+        .info-list {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .info-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        }
+
+        .info-label {
+          font-size: 0.8rem;
+          color: var(--text-muted);
+        }
+
+        .info-value {
+          font-size: 0.9rem;
+        }
+
+        .code {
+          padding: 2px 8px;
+          background: var(--bg-tertiary);
+          border-radius: 3px;
+          font-family: 'JetBrains Mono', monospace;
+          font-size: 0.8rem;
+        }
+
+        @media (max-width: 768px) {
+          .cards-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .stats-grid {
+            grid-template-columns: 1fr;
+          }
+        }
+      `}</style>
     </div>
   );
 }

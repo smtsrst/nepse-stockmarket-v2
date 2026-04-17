@@ -1,52 +1,11 @@
 {
   "version": 2,
   "builds": [
-    {
-      "src": "api/**/*.ts",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "package.json",
-      "use": "@vercel/static-build",
-      "config": { "distDir": "dist" }
-    }
+    { "src": "api/**/*.ts", "use": "@vercel/node" },
+    { "src": "package.json", "use": "@vercel/static-build", "config": { "distDir": "dist" } }
   ],
   "routes": [
-    {
-      "src": "/api/market/status",
-      "dest": "/api/market/status.ts"
-    },
-    {
-      "src": "/api/market/summary",
-      "dest": "/api/market/summary.ts"
-    },
-    {
-      "src": "/api/stocks/gainers",
-      "dest": "/api/stocks/gainers.ts"
-    },
-    {
-      "src": "/api/stocks/losers",
-      "dest": "/api/stocks/losers.ts"
-    },
-    {
-      "src": "/api/stocks",
-      "dest": "/api/stocks/index.ts"
-    },
-    {
-      "src": "/api/history",
-      "dest": "/api/history.ts"
-    },
-    {
-      "src": "/api/analysis",
-      "dest": "/api/analysis.ts"
-    },
-    {
-      "src": "/api/predict",
-      "dest": "/api/predict.ts"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/dist/$1"
-    }
+    { "src": "/api/(.*)", "dest": "/api/$1.ts" },
+    { "src": "/(.*)", "dest": "/dist/$1" }
   ]
 }

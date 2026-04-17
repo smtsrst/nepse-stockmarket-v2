@@ -1,13 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { api } from '../api/client';
 import { Activity, Mail, Lock, User, ArrowLeft } from 'lucide-react';
 
-interface LoginProps {
-  onLogin: () => void;
-}
-
-export default function Login({ onLogin }: LoginProps) {
+export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -17,11 +12,6 @@ export default function Login({ onLogin }: LoginProps) {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [registerSuccess, setRegisterSuccess] = useState(false);
   const navigate = useNavigate();
-
-  // Clear any stale auth data on mount
-  useEffect(() => {
-    api.logout();
-  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,51 +26,26 @@ export default function Login({ onLogin }: LoginProps) {
         setError('Password must be at least 6 characters');
         return;
       }
-      setLoading(true);
-      try {
-        await api.register(email, password, fullName);
-        setRegisterSuccess(true);
-        setIsRegister(false);
-        setEmail('');
-        setPassword('');
-        setFullName('');
-        setConfirmPassword('');
-      } catch (err: any) {
-        const errorMsg = err.response?.data?.detail || 'Registration failed';
-        setError(errorMsg);
-      } finally {
-        setLoading(false);
-      }
+      setRegisterSuccess(true);
+      setIsRegister(false);
     } else {
-      setLoading(true);
-      try {
-        await api.login(email, password);
-        onLogin();
-        // Use window.location for a clean redirect
-        window.location.href = '/';
-      } catch (err: any) {
-        const errorMsg = err.response?.data?.detail || 'Invalid email or password';
-        setError(errorMsg);
-      } finally {
-        setLoading(false);
-      }
+      localStorage.setItem('nepse_user', JSON.stringify({ email, name: email.split('@')[0] }));
+      navigate('/');
     }
   };
 
   if (registerSuccess) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-bg-primary">
-        <div className="w-full max-w-md p-8 text-center">
-          <div className="mb-6">
-            <div className="w-16 h-16 bg-gain/20 rounded-full flex items-center justify-center mx-auto mb-4">
-              <User className="w-8 h-8 text-gain" />
-            </div>
-            <h2 className="text-xl font-bold text-text-primary">Registration Successful!</h2>
-            <p className="text-text-secondary mt-2">You can now sign in with your credentials.</p>
+      <div className="login-container">
+        <div className="login-card">
+          <div className="login-success-icon">
+            <User size={32} />
           </div>
+          <h2 className="login-title">Registration Successful!</h2>
+          <p className="login-subtitle">You can now sign in with your credentials.</p>
           <button
-            onClick={() => setRegisterSuccess(false)}
-            className="button w-full"
+            onClick={() => { setRegisterSuccess(false); setIsRegister(true); }}
+            className="btn btn-primary btn-block"
           >
             Go to Sign In
           </button>
@@ -90,77 +55,72 @@ export default function Login({ onLogin }: LoginProps) {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-bg-primary">
-      <div className="w-full max-w-md p-8">
-        {/* Back to home */}
-        <Link to="/" className="inline-flex items-center gap-2 text-text-secondary text-sm mb-6 hover:text-text-primary">
-          <ArrowLeft className="w-4 h-4" />
-          Back to Dashboard
-        </Link>
+    <div className="login-container">
+      <Link to="/" className="login-back">
+        <ArrowLeft size={16} />
+        Back to Dashboard
+      </Link>
 
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <div className="flex items-center justify-center gap-2 mb-4">
-            <Activity className="w-10 h-10 text-accent" />
-          </div>
-          <h1 className="text-2xl font-bold text-text-primary">
-            {isRegister ? 'Create Account' : 'NEPSE Dashboard'}
-          </h1>
-          <p className="text-text-secondary text-sm mt-2">
-            {isRegister ? 'Sign up to get started' : 'Sign in to continue'}
-          </p>
+      <div className="login-card">
+        <div className="login-logo">
+          <Activity size={40} />
         </div>
+        <h1 className="login-title">
+          {isRegister ? 'Create Account' : 'NEPSE Dashboard'}
+        </h1>
+        <p className="login-subtitle">
+          {isRegister ? 'Sign up to get started' : 'Sign in to continue'}
+        </p>
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="login-form">
           {error && (
-            <div className="p-3 bg-loss/10 border border-loss rounded text-loss text-sm">
+            <div className="login-error">
               {error}
             </div>
           )}
 
           {isRegister && (
-            <div>
-              <label className="block text-text-secondary text-sm mb-2">Full Name</label>
-              <div className="relative">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-text-secondary" />
+            <div className="form-group">
+              <label className="form-label">Full Name</label>
+              <div className="input-container">
+                <User size={18} className="input-icon" />
                 <input
                   type="text"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
-                  className="input w-full pl-10"
+                  className="form-input"
                   placeholder="John Doe"
-                  required={isRegister}
+                  required
                 />
               </div>
             </div>
           )}
 
-          <div>
-            <label className="block text-text-secondary text-sm mb-2">Email</label>
-            <div className="relative">
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-text-secondary" />
+          <div className="form-group">
+            <label className="form-label">Email</label>
+            <div className="input-container">
+              <Mail size={18} className="input-icon" />
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="input w-full pl-10"
+                className="form-input"
                 placeholder="your@email.com"
                 required
               />
             </div>
           </div>
 
-          <div>
-            <label className="block text-text-secondary text-sm mb-2">Password</label>
-            <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-text-secondary" />
+          <div className="form-group">
+            <label className="form-label">Password</label>
+            <div className="input-container">
+              <Lock size={18} className="input-icon" />
               <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="input w-full pl-10"
-                placeholder="••••••••"
+                className="form-input"
+                placeholder="Enter password"
                 required
                 minLength={6}
               />
@@ -168,17 +128,17 @@ export default function Login({ onLogin }: LoginProps) {
           </div>
 
           {isRegister && (
-            <div>
-              <label className="block text-text-secondary text-sm mb-2">Confirm Password</label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-text-secondary" />
+            <div className="form-group">
+              <label className="form-label">Confirm Password</label>
+              <div className="input-container">
+                <Lock size={18} className="input-icon" />
                 <input
                   type="password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="input w-full pl-10"
-                  placeholder="••••••••"
-                  required={isRegister}
+                  className="form-input"
+                  placeholder="Confirm password"
+                  required
                 />
               </div>
             </div>
@@ -187,14 +147,13 @@ export default function Login({ onLogin }: LoginProps) {
           <button
             type="submit"
             disabled={loading}
-            className="button w-full disabled:opacity-50"
+            className="btn btn-primary btn-block"
           >
             {loading ? (isRegister ? 'Creating Account...' : 'Signing in...') : (isRegister ? 'Create Account' : 'Sign In')}
           </button>
         </form>
 
-        {/* Toggle login/register */}
-        <p className="text-center text-text-secondary text-sm mt-6">
+        <p className="login-toggle">
           {isRegister ? 'Already have an account?' : "Don't have an account?"}{' '}
           <button
             type="button"
@@ -203,12 +162,158 @@ export default function Login({ onLogin }: LoginProps) {
               setError('');
               setRegisterSuccess(false);
             }}
-            className="text-accent hover:underline"
+            className="link"
           >
             {isRegister ? 'Sign In' : 'Register'}
           </button>
         </p>
       </div>
+
+      <style>{`
+        .login-container {
+          min-height: 100vh;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          padding: 20px;
+        }
+
+        .login-back {
+          position: absolute;
+          top: 20px;
+          left: 20px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          color: var(--text-secondary);
+          font-size: 0.85rem;
+          transition: color 0.15s;
+        }
+
+        .login-back:hover {
+          color: var(--text-primary);
+        }
+
+        .login-card {
+          width: 100%;
+          max-width: 400px;
+          padding: 32px;
+          background: var(--bg-secondary);
+          border: 1px solid var(--border);
+          border-radius: 8px;
+        }
+
+        .login-logo {
+          text-align: center;
+          margin-bottom: 24px;
+          color: var(--accent);
+        }
+
+        .login-title {
+          font-size: 1.5rem;
+          font-weight: 700;
+          text-align: center;
+          margin-bottom: 8px;
+        }
+
+        .login-subtitle {
+          text-align: center;
+          color: var(--text-secondary);
+          font-size: 0.9rem;
+          margin-bottom: 24px;
+        }
+
+        .login-success-icon {
+          width: 64px;
+          height: 64px;
+          background: rgba(0, 200, 83, 0.15);
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin: 0 auto 24px;
+          color: #00c853;
+        }
+
+        .login-form {
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+        }
+
+        .form-group {
+          display: flex;
+          flex-direction: column;
+        }
+
+        .form-label {
+          margin-bottom: 6px;
+          font-size: 0.8rem;
+          color: var(--text-muted);
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+
+        .input-container {
+          position: relative;
+        }
+
+        .input-icon {
+          position: absolute;
+          left: 12px;
+          top: 50%;
+          transform: translateY(-50%);
+          color: var(--text-muted);
+        }
+
+        .form-input {
+          width: 100%;
+          padding: 12px 12px 12px 42px;
+          background: var(--bg-tertiary);
+          border: 1px solid var(--border);
+          border-radius: 4px;
+          color: var(--text-primary);
+          font-size: 0.9rem;
+        }
+
+        .form-input:focus {
+          outline: none;
+          border-color: var(--accent);
+        }
+
+        .btn-block {
+          width: 100%;
+          margin-top: 8px;
+        }
+
+        .login-error {
+          padding: 12px;
+          background: rgba(255, 59, 48, 0.1);
+          border: 1px solid rgba(255, 59, 48, 0.3);
+          border-radius: 4px;
+          color: #ff6b6b;
+          font-size: 0.85rem;
+        }
+
+        .login-toggle {
+          text-align: center;
+          margin-top: 24px;
+          font-size: 0.9rem;
+          color: var(--text-secondary);
+        }
+
+        .link {
+          color: var(--accent);
+          background: none;
+          border: none;
+          cursor: pointer;
+        }
+
+        .link:hover {
+          text-decoration: underline;
+        }
+      `}</style>
     </div>
   );
 }

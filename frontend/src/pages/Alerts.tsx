@@ -1,20 +1,40 @@
 import { useState, useEffect } from 'react';
-import { Plus, Trash2, Bell, BellOff } from 'lucide-react';
-import { PriceAlert } from '../types';
-import StockSelect from '../components/StockSelect';
+import { Plus, Trash2, Bell, BellOff, Search } from 'lucide-react';
 
 const STORAGE_KEY = 'nepse_price_alerts';
+const API_URL = import.meta.env.VITE_API_URL || 'https://frontend-eight-tan-70.vercel.app/api';
+
+interface Stock {
+  symbol: string;
+  name: string;
+}
+
+interface PriceAlert {
+  id: number;
+  symbol: string;
+  target_price: number;
+  condition: 'ABOVE' | 'BELOW';
+  is_active: boolean;
+  created_at: string;
+}
 
 export default function Alerts() {
   const [alerts, setAlerts] = useState<PriceAlert[]>([]);
+  const [stocks, setStocks] = useState<Stock[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
     symbol: '',
     target_price: '',
     condition: 'ABOVE' as 'ABOVE' | 'BELOW',
   });
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
+    loadAlerts();
+    loadStocks();
+  }, []);
+
+  const loadAlerts = () => {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
       try {
@@ -23,7 +43,16 @@ export default function Alerts() {
         setAlerts([]);
       }
     }
-  }, []);
+  };
+
+  const loadStocks = async () => {
+    try {
+      const data = await fetch(`${API_URL}/stocks`).then(r => r.json()).catch(() => []);
+      setStocks(data);
+    } catch (error) {
+      console.error('Error loading stocks:', error);
+    }
+  };
 
   const saveAlerts = (data: PriceAlert[]) => {
     setAlerts(data);
@@ -58,133 +87,305 @@ export default function Alerts() {
 
   const activeCount = alerts.filter((a) => a.is_active).length;
 
+  const filteredStocks = stocks.filter(s => 
+    s.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    s.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   return (
-    <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-text-primary">Price Alerts</h1>
-        <button
-          onClick={() => setShowForm(!showForm)}
-          className="flex items-center gap-2 px-4 py-2 bg-accent text-bg-primary rounded-lg hover:bg-accent/90 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          Add Alert
-        </button>
+    <div className="alerts">
+      <div className="dashboard-header">
+        <div className="header-left">
+          <h1 className="page-title">PRICE ALERTS</h1>
+        </div>
+        <div className="header-right">
+          <button onClick={() => setShowForm(!showForm)} className="btn btn-primary">
+            <Plus size={14} />
+            Add Alert
+          </button>
+        </div>
       </div>
 
       {showForm && (
-        <div className="mb-6 p-4 bg-bg-secondary rounded-lg border border-border">
-          <form onSubmit={handleSubmit} className="flex flex-wrap gap-4 items-end">
-            <div className="flex-1 min-w-[200px]">
-              <label className="block text-text-secondary text-sm mb-1">Stock</label>
-              <StockSelect
-                value={formData.symbol}
-                onChange={(symbol) => setFormData({ ...formData, symbol })}
-                placeholder="Select stock..."
-              />
+        <div className="card mb-4">
+          <div className="card-header">
+            <span>NEW ALERT</span>
+          </div>
+          <form onSubmit={handleSubmit} className="card-body">
+            <div className="form-grid">
+              <div className="form-group">
+                <label className="form-label">Stock</label>
+                <div className="search-container">
+                  <Search size={14} className="search-icon" />
+                  <input
+                    type="text"
+                    placeholder="Search stocks..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="search-input"
+                  />
+                </div>
+                <div className="stock-select-list">
+                  {filteredStocks.slice(0, 8).map((stock) => (
+                    <div
+                      key={stock.symbol}
+                      onClick={() => { setFormData({ ...formData, symbol: stock.symbol }); setSearchQuery(''); }}
+                      className={`stock-select-item ${formData.symbol === stock.symbol ? 'selected' : ''}`}
+                    >
+                      <div className="stock-avatar">{stock.symbol.slice(0, 2)}</div>
+                      <div className="stock-info">
+                        <div className="stock-symbol">{stock.symbol}</div>
+                        <div className="stock-name">{stock.name}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {formData.symbol && (
+                  <div className="selected-stock">
+                    Selected: <strong>{formData.symbol}</strong>
+                  </div>
+                )}
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Target Price (Rs.)</label>
+                <input
+                  type="number"
+                  value={formData.target_price}
+                  onChange={(e) => setFormData({ ...formData, target_price: e.target.value })}
+                  className="form-input"
+                  placeholder="0.00"
+                  step="0.01"
+                  min="0"
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Condition</label>
+                <select
+                  value={formData.condition}
+                  onChange={(e) => setFormData({ ...formData, condition: e.target.value as 'ABOVE' | 'BELOW' })}
+                  className="form-select"
+                >
+                  <option value="ABOVE">Price Above</option>
+                  <option value="BELOW">Price Below</option>
+                </select>
+              </div>
+
+              <div className="form-group form-actions">
+                <button type="submit" className="btn btn-primary" disabled={!formData.symbol || !formData.target_price}>
+                  Save
+                </button>
+                <button type="button" onClick={() => setShowForm(false)} className="btn btn-ghost">
+                  Cancel
+                </button>
+              </div>
             </div>
-            <div className="flex-1 min-w-[150px]">
-              <label className="block text-text-secondary text-sm mb-1">Target Price (Rs.)</label>
-              <input
-                type="number"
-                placeholder="0.00"
-                value={formData.target_price}
-                onChange={(e) => setFormData({ ...formData, target_price: e.target.value })}
-                className="w-full px-3 py-2 bg-bg-tertiary border border-border rounded-lg text-text-primary placeholder-text-secondary"
-                required
-              />
-            </div>
-            <div className="flex-1 min-w-[150px]">
-              <label className="block text-text-secondary text-sm mb-1">Condition</label>
-              <select
-                value={formData.condition}
-                onChange={(e) => setFormData({ ...formData, condition: e.target.value as 'ABOVE' | 'BELOW' })}
-                className="w-full px-3 py-2 bg-bg-tertiary border border-border rounded-lg text-text-primary"
-              >
-                <option value="ABOVE">Price Above</option>
-                <option value="BELOW">Price Below</option>
-              </select>
-            </div>
-            <button
-              type="submit"
-              className="px-6 py-2 bg-gain text-white rounded-lg hover:bg-gain/90 transition-colors"
-            >
-              Save
-            </button>
           </form>
         </div>
       )}
 
-      <div className="mb-6 p-4 bg-bg-secondary rounded-lg border border-border">
-        <div className="flex items-center gap-2">
-          <Bell className="w-5 h-5 text-accent" />
-          <span className="text-text-primary">
-            <span className="font-bold">{activeCount}</span> active alert{activeCount !== 1 ? 's' : ''}
-          </span>
+      <div className="summary-card mb-4">
+        <div className="summary-card-icon">
+          <Bell size={20} />
+        </div>
+        <div>
+          <div className="summary-card-label">Active Alerts</div>
+          <div className="summary-card-value">{activeCount}</div>
         </div>
       </div>
 
-      <div className="bg-bg-secondary rounded-lg border border-border overflow-hidden">
-        <table className="w-full">
-          <thead className="bg-bg-tertiary">
-            <tr>
-              <th className="px-4 py-3 text-left text-text-secondary font-medium">Symbol</th>
-              <th className="px-4 py-3 text-left text-text-secondary font-medium">Target Price</th>
-              <th className="px-4 py-3 text-left text-text-secondary font-medium">Condition</th>
-              <th className="px-4 py-3 text-left text-text-secondary font-medium">Status</th>
-              <th className="px-4 py-3 text-left text-text-secondary font-medium">Created</th>
-              <th className="px-4 py-3 text-center text-text-secondary font-medium">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {alerts.length === 0 ? (
+      <div className="card">
+        <div className="table-container">
+          <table className="data-table">
+            <thead>
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-text-secondary">
-                  No alerts set. Create your first alert above.
-                </td>
+                <th>Symbol</th>
+                <th>Target Price</th>
+                <th>Condition</th>
+                <th>Status</th>
+                <th>Created</th>
+                <th style={{ width: 100 }}>Actions</th>
               </tr>
-            ) : (
-              alerts.map((alert) => (
-                <tr key={alert.id} className="border-t border-border hover:bg-bg-tertiary/50">
-                  <td className="px-4 py-3 text-text-primary font-medium">{alert.symbol}</td>
-                  <td className="px-4 py-3 text-text-primary">Rs. {alert.target_price.toLocaleString()}</td>
-                  <td className="px-4 py-3 text-text-primary">
-                    {alert.condition === 'ABOVE' ? 'Above' : 'Below'}
+            </thead>
+            <tbody>
+              {alerts.length === 0 ? (
+                <tr>
+                  <td colSpan={6} style={{ textAlign: 'center', padding: 48 }} className="text-muted">
+                    No alerts set. Create your first alert above.
                   </td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={`px-2 py-1 rounded text-xs font-medium ${
-                        alert.is_active ? 'bg-gain/20 text-gain' : 'bg-text-secondary/20 text-text-secondary'
-                      }`}
-                    >
+                </tr>
+              ) : alerts.map((alert) => (
+                <tr key={alert.id}>
+                  <td className="font-mono font-semibold">{alert.symbol}</td>
+                  <td className="font-mono">Rs. {alert.target_price.toLocaleString()}</td>
+                  <td>
+                    <span className={`badge badge-${alert.condition.toLowerCase()}`}>
+                      {alert.condition === 'ABOVE' ? 'Above' : 'Below'}
+                    </span>
+                  </td>
+                  <td>
+                    <span className={`badge badge-${alert.is_active ? 'active' : 'paused'}`}>
                       {alert.is_active ? 'Active' : 'Paused'}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-text-secondary text-sm">
+                  <td className="font-mono text-secondary">
                     {new Date(alert.created_at).toLocaleDateString()}
                   </td>
-                  <td className="px-4 py-3 text-center">
-                    <div className="flex items-center justify-center gap-2">
+                  <td>
+                    <div className="flex gap-1">
                       <button
                         onClick={() => toggleAlert(alert.id)}
-                        className="p-1 text-text-secondary hover:text-accent transition-colors"
+                        className="btn btn-ghost btn-icon"
                         title={alert.is_active ? 'Pause' : 'Activate'}
                       >
-                        {alert.is_active ? <BellOff className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
+                        {alert.is_active ? <BellOff size={14} /> : <Bell size={14} />}
                       </button>
                       <button
                         onClick={() => deleteAlert(alert.id)}
-                        className="p-1 text-text-secondary hover:text-loss transition-colors"
+                        className="btn btn-ghost btn-icon text-loss"
                       >
-                        <Trash2 className="w-4 h-4" />
+                        <Trash2 size={14} />
                       </button>
                     </div>
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
+
+      <style>{`
+        .alerts {
+          max-width: 1000px;
+          margin: 0 auto;
+        }
+
+        .summary-card-icon {
+          color: var(--accent);
+          margin-right: 12px;
+        }
+
+        .form-grid {
+          display: grid;
+          grid-template-columns: 2fr 1fr 1fr auto;
+          gap: 12px;
+          align-items: start;
+        }
+
+        .form-group {
+          margin-bottom: 0;
+        }
+
+        .form-label {
+          display: block;
+          margin-bottom: 6px;
+          font-size: 0.75rem;
+          color: var(--text-muted);
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+
+        .form-input,
+        .form-select {
+          width: 100%;
+          padding: 10px 12px;
+          background: var(--bg-tertiary);
+          border: 1px solid var(--border);
+          border-radius: 4px;
+          color: var(--text-primary);
+          font-family: 'JetBrains Mono', monospace;
+          font-size: 0.85rem;
+        }
+
+        .form-input:focus,
+        .form-select:focus {
+          outline: none;
+          border-color: var(--accent);
+        }
+
+        .form-actions {
+          display: flex;
+          gap: 8px;
+          align-items: flex-end;
+        }
+
+        .selected-stock {
+          margin-top: 8px;
+          padding: 8px 12px;
+          background: var(--accent);
+          color: var(--bg-primary);
+          border-radius: 4px;
+          font-size: 0.85rem;
+        }
+
+        .stock-select-list {
+          max-height: 100px;
+          overflow-y: auto;
+          margin-top: 4px;
+          border: 1px solid var(--border);
+          border-radius: 4px;
+        }
+
+        .stock-select-item {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 6px 10px;
+          cursor: pointer;
+          transition: background 0.15s;
+        }
+
+        .stock-select-item:hover {
+          background: var(--bg-tertiary);
+        }
+
+        .stock-select-item.selected {
+          background: var(--accent);
+          color: var(--bg-primary);
+        }
+
+        .badge {
+          display: inline-block;
+          padding: 2px 8px;
+          border-radius: 3px;
+          font-size: 0.7rem;
+          font-weight: 600;
+          text-transform: uppercase;
+        }
+
+        .badge-above {
+          background: rgba(0, 200, 83, 0.15);
+          color: #00c853;
+        }
+
+        .badge-below {
+          background: rgba(255, 59, 48, 0.15);
+          color: #ff6b6b;
+        }
+
+        .badge-active {
+          background: rgba(0, 200, 83, 0.15);
+          color: #00c853;
+        }
+
+        .badge-paused {
+          background: rgba(100, 100, 100, 0.15);
+          color: var(--text-secondary);
+        }
+
+        @media (max-width: 768px) {
+          .form-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .form-actions {
+            justify-content: flex-end;
+          }
+        }
+      `}</style>
     </div>
   );
 }

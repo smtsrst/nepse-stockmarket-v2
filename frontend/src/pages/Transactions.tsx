@@ -1,9 +1,14 @@
 import { useState, useEffect } from 'react';
-import { Plus, Trash2, ArrowUpDown, TrendingUp, TrendingDown, FileText } from 'lucide-react';
-import StockSelect from '../components/StockSelect';
+import { Plus, Trash2, TrendingUp, TrendingDown, FileText, Search } from 'lucide-react';
 
 const TRANSACTIONS_KEY = 'nepse_transactions';
 const HOLDINGS_KEY = 'nepse_holdings';
+const API_URL = import.meta.env.VITE_API_URL || 'https://frontend-eight-tan-70.vercel.app/api';
+
+interface Stock {
+  symbol: string;
+  name: string;
+}
 
 interface Transaction {
   id: number;
@@ -23,23 +28,9 @@ interface Holding {
   total_cost: number;
 }
 
-const loadStoredTransactions = (): Transaction[] => {
-  const saved = localStorage.getItem(TRANSACTIONS_KEY);
-  if (saved) {
-    try {
-      const parsed = JSON.parse(saved);
-      return parsed.sort((a: Transaction, b: Transaction) => 
-        new Date(b.date).getTime() - new Date(a.date).getTime()
-      );
-    } catch {
-      return [];
-    }
-  }
-  return [];
-};
-
 export default function Transactions() {
-  const [transactions, setTransactions] = useState<Transaction[]>(loadStoredTransactions);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [stocks, setStocks] = useState<Stock[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
     symbol: '',
@@ -48,11 +39,15 @@ export default function Transactions() {
     rate: '',
     notes: '',
   });
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
-    const handleStorageChange = () => {
-      setTransactions(loadStoredTransactions());
-    };
+    loadStoredTransactions();
+    loadStocks();
+  }, []);
+
+  useEffect(() => {
+    const handleStorageChange = () => loadStoredTransactions();
     window.addEventListener('holdingsUpdated', handleStorageChange);
     window.addEventListener('storage', handleStorageChange);
     return () => {
@@ -60,6 +55,30 @@ export default function Transactions() {
       window.removeEventListener('storage', handleStorageChange);
     };
   }, []);
+
+  const loadStocks = async () => {
+    try {
+      const data = await fetch(`${API_URL}/stocks`).then(r => r.json()).catch(() => []);
+      setStocks(data);
+    } catch (error) {
+      console.error('Error loading stocks:', error);
+    }
+  };
+
+  const loadStoredTransactions = () => {
+    const saved = localStorage.getItem(TRANSACTIONS_KEY);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        const sorted = parsed.sort((a: Transaction, b: Transaction) => 
+          new Date(b.date).getTime() - new Date(a.date).getTime()
+        );
+        setTransactions(sorted);
+      } catch {
+        setTransactions([]);
+      }
+    }
+  };
 
   const saveAndRecalculate = (newTransactions: Transaction[]) => {
     const sorted = [...newTransactions].sort((a, b) => 
@@ -138,156 +157,314 @@ export default function Transactions() {
   const formatCurrency = (num: number) =>
     new Intl.NumberFormat('en-NP', { style: 'currency', currency: 'NPR', maximumFractionDigits: 0 }).format(num);
 
+  const filteredStocks = stocks.filter(s => 
+    s.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    s.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   return (
-    <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-text-primary">Transaction History</h1>
-          <p className="text-text-secondary text-sm mt-1">
-            Record your trades here - Portfolio will update automatically
-          </p>
+    <div className="transactions">
+      <div className="dashboard-header">
+        <div className="header-left">
+          <h1 className="page-title">TRANSACTIONS</h1>
         </div>
-        <button
-          onClick={() => setShowForm(!showForm)}
-          className="flex items-center gap-2 px-4 py-2 bg-accent text-bg-primary rounded-lg hover:bg-accent/90 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          Add Transaction
-        </button>
+        <div className="header-right">
+          <button onClick={() => setShowForm(!showForm)} className="btn btn-primary">
+            <Plus size={14} />
+            Add Transaction
+          </button>
+        </div>
       </div>
 
       {showForm && (
-        <div className="mb-6 p-4 bg-bg-secondary rounded-lg border border-border">
-          <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-6 gap-4">
-            <div className="md:col-span-1">
-              <StockSelect
-                value={formData.symbol}
-                onChange={(symbol) => setFormData({ ...formData, symbol })}
-                placeholder="Select stock..."
-              />
+        <div className="card mb-4">
+          <div className="card-header">
+            <span>NEW TRANSACTION</span>
+          </div>
+          <form onSubmit={handleSubmit} className="card-body">
+            <div className="form-grid">
+              <div className="form-group">
+                <label className="form-label">Stock</label>
+                <div className="search-container">
+                  <Search size={14} className="search-icon" />
+                  <input
+                    type="text"
+                    placeholder="Search stocks..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="search-input"
+                  />
+                </div>
+                <div className="stock-select-list">
+                  {filteredStocks.slice(0, 10).map((stock) => (
+                    <div
+                      key={stock.symbol}
+                      onClick={() => { setFormData({ ...formData, symbol: stock.symbol }); setSearchQuery(''); }}
+                      className={`stock-select-item ${formData.symbol === stock.symbol ? 'selected' : ''}`}
+                    >
+                      <div className="stock-avatar">{stock.symbol.slice(0, 2)}</div>
+                      <div className="stock-info">
+                        <div className="stock-symbol">{stock.symbol}</div>
+                        <div className="stock-name">{stock.name}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {formData.symbol && (
+                  <div className="selected-stock">
+                    Selected: <strong>{formData.symbol}</strong>
+                  </div>
+                )}
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Type</label>
+                <select
+                  value={formData.type}
+                  onChange={(e) => setFormData({ ...formData, type: e.target.value as 'BUY' | 'SELL' })}
+                  className="form-select"
+                >
+                  <option value="BUY">BUY</option>
+                  <option value="SELL">SELL</option>
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Quantity</label>
+                <input
+                  type="number"
+                  value={formData.quantity}
+                  onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
+                  className="form-input"
+                  placeholder="Number of shares"
+                  min="1"
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Rate (Rs.)</label>
+                <input
+                  type="number"
+                  value={formData.rate}
+                  onChange={(e) => setFormData({ ...formData, rate: e.target.value })}
+                  className="form-input"
+                  placeholder="Price per share"
+                  step="0.01"
+                  min="0"
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Notes (optional)</label>
+                <input
+                  type="text"
+                  value={formData.notes}
+                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                  className="form-input"
+                  placeholder="Optional notes"
+                />
+              </div>
+
+              <div className="form-group form-actions">
+                <button type="submit" className="btn btn-primary" disabled={!formData.symbol || !formData.quantity || !formData.rate}>
+                  Save Transaction
+                </button>
+                <button type="button" onClick={() => setShowForm(false)} className="btn btn-ghost">
+                  Cancel
+                </button>
+              </div>
             </div>
-            <select
-              value={formData.type}
-              onChange={(e) => setFormData({ ...formData, type: e.target.value as 'BUY' | 'SELL' })}
-              className="px-3 py-2 bg-bg-tertiary border border-border rounded-lg text-text-primary"
-            >
-              <option value="BUY">BUY</option>
-              <option value="SELL">SELL</option>
-            </select>
-            <input
-              type="number"
-              placeholder="Quantity"
-              value={formData.quantity}
-              onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
-              className="px-3 py-2 bg-bg-tertiary border border-border rounded-lg text-text-primary placeholder-text-secondary"
-              required
-            />
-            <input
-              type="number"
-              placeholder="Rate (Rs.)"
-              value={formData.rate}
-              onChange={(e) => setFormData({ ...formData, rate: e.target.value })}
-              className="px-3 py-2 bg-bg-tertiary border border-border rounded-lg text-text-primary placeholder-text-secondary"
-              required
-            />
-            <input
-              type="text"
-              placeholder="Notes (optional)"
-              value={formData.notes}
-              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-              className="px-3 py-2 bg-bg-tertiary border border-border rounded-lg text-text-primary placeholder-text-secondary"
-            />
-            <button
-              type="submit"
-              className="px-4 py-2 bg-gain text-white rounded-lg hover:bg-gain/90 transition-colors"
-            >
-              Save
-            </button>
           </form>
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <div className="p-4 bg-bg-secondary rounded-lg border border-border">
-          <div className="flex items-center gap-2 text-text-secondary mb-1">
-            <TrendingUp className="w-4 h-4" />
-            Total Buys
-          </div>
-          <div className="text-xl font-bold text-loss">{formatCurrency(totalBuy)}</div>
+      <div className="summary-grid">
+        <div className="summary-card">
+          <div className="summary-card-label">Total Buys</div>
+          <div className="summary-card-value text-loss">Rs. {totalBuy.toLocaleString()}</div>
         </div>
-        <div className="p-4 bg-bg-secondary rounded-lg border border-border">
-          <div className="flex items-center gap-2 text-text-secondary mb-1">
-            <TrendingDown className="w-4 h-4" />
-            Total Sells
-          </div>
-          <div className="text-xl font-bold text-gain">{formatCurrency(totalSell)}</div>
+        <div className="summary-card">
+          <div className="summary-card-label">Total Sells</div>
+          <div className="summary-card-value text-gain">Rs. {totalSell.toLocaleString()}</div>
         </div>
-        <div className="p-4 bg-bg-secondary rounded-lg border border-border">
-          <div className="flex items-center gap-2 text-text-secondary mb-1">
-            <ArrowUpDown className="w-4 h-4" />
-            Net Investment
-          </div>
-          <div className={`text-xl font-bold ${netInvestment >= 0 ? 'text-loss' : 'text-gain'}`}>
-            {formatCurrency(netInvestment)}
+        <div className="summary-card">
+          <div className="summary-card-label">Net Investment</div>
+          <div className={`summary-card-value ${netInvestment >= 0 ? 'text-loss' : 'text-gain'}`}>
+            Rs. {netInvestment.toLocaleString()}
           </div>
         </div>
       </div>
 
-      <div className="bg-bg-secondary rounded-lg border border-border overflow-hidden">
-        <table className="w-full">
-          <thead className="bg-bg-tertiary">
-            <tr>
-              <th className="px-4 py-3 text-left text-text-secondary font-medium">Date</th>
-              <th className="px-4 py-3 text-left text-text-secondary font-medium">Symbol</th>
-              <th className="px-4 py-3 text-left text-text-secondary font-medium">Type</th>
-              <th className="px-4 py-3 text-right text-text-secondary font-medium">Qty</th>
-              <th className="px-4 py-3 text-right text-text-secondary font-medium">Rate</th>
-              <th className="px-4 py-3 text-right text-text-secondary font-medium">Amount</th>
-              <th className="px-4 py-3 text-center text-text-secondary font-medium">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {transactions.length === 0 ? (
+      <div className="card mt-4">
+        <div className="table-container">
+          <table className="data-table">
+            <thead>
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center">
-                  <div className="flex flex-col items-center text-text-secondary">
-                    <FileText className="w-8 h-8 mb-2 opacity-50" />
-                    <p>No transactions yet.</p>
-                    <p className="text-sm mt-1">Add your first buy/sell transaction above.</p>
-                  </div>
-                </td>
+                <th>Date</th>
+                <th>Symbol</th>
+                <th>Type</th>
+                <th style={{ textAlign: 'right' }}>Qty</th>
+                <th style={{ textAlign: 'right' }}>Rate</th>
+                <th style={{ textAlign: 'right' }}>Amount</th>
+                <th style={{ width: 60 }}></th>
               </tr>
-            ) : (
-              transactions.map((t) => (
-                <tr key={t.id} className="border-t border-border hover:bg-bg-tertiary/50">
-                  <td className="px-4 py-3 text-text-primary">{t.date}</td>
-                  <td className="px-4 py-3 text-text-primary font-medium">{t.symbol}</td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={`px-2 py-1 rounded text-xs font-medium ${
-                        t.type === 'BUY' ? 'bg-loss/20 text-loss' : 'bg-gain/20 text-gain'
-                      }`}
-                    >
+            </thead>
+            <tbody>
+              {transactions.length === 0 ? (
+                <tr>
+                  <td colSpan={7} style={{ textAlign: 'center', padding: 48 }}>
+                    <FileText size={32} className="mx-auto mb-4 text-muted" />
+                    <p className="text-muted">No transactions yet</p>
+                    <p className="text-muted text-sm">Add your first buy/sell transaction above.</p>
+                  </td>
+                </tr>
+              ) : transactions.map((t) => (
+                <tr key={t.id}>
+                  <td className="font-mono">{t.date}</td>
+                  <td className="font-mono font-semibold">{t.symbol}</td>
+                  <td>
+                    <span className={`badge badge-${t.type.toLowerCase()}`}>
                       {t.type}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-right text-text-primary">{t.quantity}</td>
-                  <td className="px-4 py-3 text-right text-text-primary">Rs. {t.rate.toLocaleString()}</td>
-                  <td className="px-4 py-3 text-right text-text-primary">{formatCurrency(t.amount)}</td>
-                  <td className="px-4 py-3 text-center">
+                  <td className="font-mono" style={{ textAlign: 'right' }}>{t.quantity}</td>
+                  <td className="font-mono" style={{ textAlign: 'right' }}>
+                    Rs. {t.rate.toLocaleString()}
+                  </td>
+                  <td className="font-mono" style={{ textAlign: 'right' }}>
+                    {formatCurrency(t.amount)}
+                  </td>
+                  <td>
                     <button
                       onClick={() => deleteTransaction(t.id)}
-                      className="p-1 text-text-secondary hover:text-loss transition-colors"
+                      className="btn btn-ghost btn-icon text-loss"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 size={14} />
                     </button>
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
+
+      <style>{`
+        .transactions {
+          max-width: 1200px;
+          margin: 0 auto;
+        }
+
+        .form-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+          gap: 12px;
+          align-items: start;
+        }
+
+        .form-group {
+          margin-bottom: 0;
+        }
+
+        .form-label {
+          display: block;
+          margin-bottom: 6px;
+          font-size: 0.75rem;
+          color: var(--text-muted);
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+
+        .form-input,
+        .form-select {
+          width: 100%;
+          padding: 10px 12px;
+          background: var(--bg-tertiary);
+          border: 1px solid var(--border);
+          border-radius: 4px;
+          color: var(--text-primary);
+          font-family: 'JetBrains Mono', monospace;
+          font-size: 0.85rem;
+        }
+
+        .form-input:focus,
+        .form-select:focus {
+          outline: none;
+          border-color: var(--accent);
+        }
+
+        .form-actions {
+          display: flex;
+          gap: 8px;
+          align-items: flex-end;
+        }
+
+        .selected-stock {
+          margin-top: 8px;
+          padding: 8px 12px;
+          background: var(--accent);
+          color: var(--bg-primary);
+          border-radius: 4px;
+          font-size: 0.85rem;
+        }
+
+        .stock-select-list {
+          max-height: 120px;
+          overflow-y: auto;
+          margin-top: 4px;
+          border: 1px solid var(--border);
+          border-radius: 4px;
+        }
+
+        .stock-select-item {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 6px 10px;
+          cursor: pointer;
+          transition: background 0.15s;
+        }
+
+        .stock-select-item:hover {
+          background: var(--bg-tertiary);
+        }
+
+        .stock-select-item.selected {
+          background: var(--accent);
+          color: var(--bg-primary);
+        }
+
+        .badge {
+          display: inline-block;
+          padding: 2px 8px;
+          border-radius: 3px;
+          font-size: 0.7rem;
+          font-weight: 600;
+          text-transform: uppercase;
+        }
+
+        .badge-buy {
+          background: rgba(255, 59, 48, 0.2);
+          color: #ff6b6b;
+        }
+
+        .badge-sell {
+          background: rgba(0, 200, 83, 0.2);
+          color: #00c853;
+        }
+
+        @media (max-width: 768px) {
+          .summary-grid {
+            grid-template-columns: 1fr !important;
+          }
+
+          .form-grid {
+            grid-template-columns: 1fr;
+          }
+        }
+      `}</style>
     </div>
   );
 }

@@ -1,5 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { query, isDbConfigured } from './db';
+import { neon } from '@neondatabase/serverless';
+
+const connectionString = process.env.NEON_DATABASE_URL || process.env.NEON_URL || process.env.DATABASE_URL;
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -10,35 +12,36 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).end();
   }
 
-  try {
-    if (!isDbConfigured()) {
-      return res.status(503).json({ error: 'Database not configured' });
-    }
+  if (!connectionString) {
+    return res.status(503).json({ error: 'Database not configured' });
+  }
 
-    const symbol = req.query.symbol as string;
+  const sql = neon(connectionString);
+
+  try {
+    const symbol = (req.query.symbol as string)?.toUpperCase();
     const days = parseInt(req.query.days as string) || 30;
 
     if (!symbol) {
       return res.status(400).json({ error: 'Symbol parameter is required' });
     }
 
-    const stockPrices = await query<any>(
-      `SELECT * FROM stock_prices 
-       WHERE symbol = $1 
-       ORDER BY date DESC 
-       LIMIT $2`,
-      [symbol.toUpperCase(), days]
-    );
+    const stockPrices = await sql`
+      SELECT * FROM stock_prices 
+      WHERE symbol = ${symbol}
+      ORDER BY date DESC 
+      LIMIT ${days}
+    `;
 
     if (stockPrices.length === 0) {
       return res.status(404).json({ 
         error: 'No data found',
-        symbol: symbol.toUpperCase()
+        symbol: symbol
       });
     }
 
     return res.status(200).json({
-      symbol: symbol.toUpperCase(),
+      symbol: symbol,
       days,
       source: 'db',
       record_count: stockPrices.length,

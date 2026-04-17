@@ -1,7 +1,41 @@
 import { useState } from 'react';
-import { Play, TrendingUp, Calendar } from 'lucide-react';
-import { BacktestConfig, BacktestResult, BacktestTrade } from '../types';
-import StockSelect from '../components/StockSelect';
+import { Play, TrendingUp, Calendar, BarChart3 } from 'lucide-react';
+
+const API_URL = import.meta.env.VITE_API_URL || 'https://frontend-eight-tan-70.vercel.app/api';
+
+interface BacktestConfig {
+  symbol: string;
+  start_date: string;
+  end_date: string;
+  initial_capital: number;
+  strategy: 'SMA_CROSS' | 'HOLD';
+  sma_short: number;
+  sma_long: number;
+}
+
+interface BacktestTrade {
+  date: string;
+  type: 'BUY' | 'SELL';
+  price: number;
+  quantity: number;
+  amount: number;
+  reason: string;
+}
+
+interface BacktestResult {
+  config: BacktestConfig;
+  total_return: number;
+  total_return_percent: number;
+  total_trades: number;
+  winning_trades: number;
+  losing_trades: number;
+  win_rate: number;
+  max_drawdown: number;
+  max_drawdown_percent: number;
+  holdings: number;
+  final_capital: number;
+  trades: BacktestTrade[];
+}
 
 export default function Backtesting() {
   const [config, setConfig] = useState<BacktestConfig>({
@@ -16,6 +50,7 @@ export default function Backtesting() {
 
   const [result, setResult] = useState<BacktestResult | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const runBacktest = async () => {
     if (!config.symbol) {
@@ -25,45 +60,24 @@ export default function Backtesting() {
 
     setLoading(true);
     setResult(null);
+    setError(null);
 
-    // Use API from environment or default to Render backend
-    const API_URL = import.meta.env.VITE_API_URL || 'https://nepse-backend-jv9v.onrender.com/api';
-    const url = `${API_URL}/stocks/history/${config.symbol}?days=365`;
-    
-    console.log('Fetching URL:', url);
-    console.log('Symbol:', config.symbol);
-    
     try {
-      const response = await fetch(url);
-      console.log('Response status:', response.status);
-      console.log('Response ok:', response.ok);
-
-      if (!response.ok) {
-        const text = await response.text();
-        console.error('Response error:', response.status, text);
-        throw new Error(`HTTP ${response.status}: ${text}`);
-      }
-
+      const response = await fetch(`${API_URL}/history?symbol=${config.symbol}&days=365`);
       const data = await response.json();
-      console.log('Data received:', data);
       const history = data.history || [];
 
       if (history.length === 0) {
-        alert('No historical data available for this symbol');
+        setError('No historical data available for this symbol');
         setLoading(false);
         return;
       }
 
-      if (data.detail) {
-        throw new Error(data.detail);
-      }
-
       const backtestResult = simulateBacktest(history, config);
       setResult(backtestResult);
-    } catch (error: unknown) {
-      console.error('Backtest error:', error);
-      const errMsg = error instanceof Error ? error.message : 'Unknown error';
-      alert(`Failed to run backtest: ${errMsg}\n\nURL: ${url}`);
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : 'Unknown error';
+      setError(`Failed to run backtest: ${errMsg}`);
     } finally {
       setLoading(false);
     }
@@ -190,63 +204,71 @@ export default function Backtesting() {
     new Intl.NumberFormat('en-NP', { style: 'currency', currency: 'NPR', maximumFractionDigits: 0 }).format(num);
 
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold text-text-primary mb-2">Backtesting Tool</h1>
-        <p className="text-text-secondary text-sm mb-6">
-          Test trading strategies on historical data. Simulate how a strategy would have performed in the past.
-        </p>
+    <div className="backtesting">
+      <div className="dashboard-header">
+        <div className="header-left">
+          <h1 className="page-title">BACKTESTING</h1>
+        </div>
+      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-1 space-y-4">
-          <div className="p-4 bg-bg-secondary rounded-lg border border-border">
-            <h2 className="text-lg font-semibold text-text-primary mb-4">Configuration</h2>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-text-secondary text-sm mb-1">Symbol</label>
-                <StockSelect
+      <div className="backtest-grid">
+        <div className="backtest-config">
+          <div className="card">
+            <div className="card-header">
+              <span className="flex items-center gap-2">
+                <BarChart3 size={14} />
+                CONFIGURATION
+              </span>
+            </div>
+            <div className="card-body">
+              <div className="form-group">
+                <label className="form-label">Symbol</label>
+                <input
+                  type="text"
                   value={config.symbol}
-                  onChange={(symbol) => setConfig({ ...config, symbol })}
-                  placeholder="Select stock..."
+                  onChange={(e) => setConfig({ ...config, symbol: e.target.value.toUpperCase() })}
+                  className="form-input"
+                  placeholder="e.g. NABIL"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-text-secondary text-sm mb-1">Start Date</label>
+              <div className="form-row">
+                <div className="form-group">
+                  <label className="form-label">Start Date</label>
                   <input
                     type="date"
                     value={config.start_date}
                     onChange={(e) => setConfig({ ...config, start_date: e.target.value })}
-                    className="w-full px-3 py-2 bg-bg-tertiary border border-border rounded-lg text-text-primary"
+                    className="form-input"
                   />
                 </div>
-                <div>
-                  <label className="block text-text-secondary text-sm mb-1">End Date</label>
+                <div className="form-group">
+                  <label className="form-label">End Date</label>
                   <input
                     type="date"
                     value={config.end_date}
                     onChange={(e) => setConfig({ ...config, end_date: e.target.value })}
-                    className="w-full px-3 py-2 bg-bg-tertiary border border-border rounded-lg text-text-primary"
+                    className="form-input"
                   />
                 </div>
               </div>
 
-              <div>
-                <label className="block text-text-secondary text-sm mb-1">Initial Capital (Rs.)</label>
+              <div className="form-group">
+                <label className="form-label">Initial Capital (Rs.)</label>
                 <input
                   type="number"
                   value={config.initial_capital}
                   onChange={(e) => setConfig({ ...config, initial_capital: parseInt(e.target.value) || 0 })}
-                  className="w-full px-3 py-2 bg-bg-tertiary border border-border rounded-lg text-text-primary"
+                  className="form-input"
                 />
               </div>
 
-              <div>
-                <label className="block text-text-secondary text-sm mb-1">Strategy</label>
+              <div className="form-group">
+                <label className="form-label">Strategy</label>
                 <select
                   value={config.strategy}
                   onChange={(e) => setConfig({ ...config, strategy: e.target.value as BacktestConfig['strategy'] })}
-                  className="w-full px-3 py-2 bg-bg-tertiary border border-border rounded-lg text-text-primary"
+                  className="form-select"
                 >
                   <option value="SMA_CROSS">SMA Crossover</option>
                   <option value="HOLD">Buy & Hold</option>
@@ -254,138 +276,294 @@ export default function Backtesting() {
               </div>
 
               {config.strategy === 'SMA_CROSS' && (
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-text-secondary text-sm mb-1">Short SMA</label>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label className="form-label">Short SMA</label>
                     <input
                       type="number"
                       value={config.sma_short}
                       onChange={(e) => setConfig({ ...config, sma_short: parseInt(e.target.value) || 20 })}
-                      className="w-full px-3 py-2 bg-bg-tertiary border border-border rounded-lg text-text-primary"
+                      className="form-input"
                     />
                   </div>
-                  <div>
-                    <label className="block text-text-secondary text-sm mb-1">Long SMA</label>
+                  <div className="form-group">
+                    <label className="form-label">Long SMA</label>
                     <input
                       type="number"
                       value={config.sma_long}
                       onChange={(e) => setConfig({ ...config, sma_long: parseInt(e.target.value) || 50 })}
-                      className="w-full px-3 py-2 bg-bg-tertiary border border-border rounded-lg text-text-primary"
+                      className="form-input"
                     />
                   </div>
                 </div>
               )}
 
-              <div className="p-3 bg-bg-tertiary rounded-lg text-sm text-text-secondary">
-                <div className="font-medium text-text-primary mb-1">Strategy Guide:</div>
-                <ul className="list-disc list-inside space-y-1">
-                  <li><strong>SMA Crossover:</strong> Buy when short-term SMA crosses above long-term SMA, sell when it crosses below</li>
-                  <li><strong>Buy & Hold:</strong> Simple buy at start, hold until end (baseline for comparison)</li>
+              <div className="strategy-info">
+                <div className="strategy-title">Strategy Guide:</div>
+                <ul>
+                  <li><strong>SMA Crossover:</strong> Buy when short SMA crosses above long SMA, sell when below</li>
+                  <li><strong>Buy & Hold:</strong> Buy at start, hold until end (baseline)</li>
                 </ul>
               </div>
 
               <button
                 onClick={runBacktest}
-                disabled={loading}
-                className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-accent text-bg-primary rounded-lg hover:bg-accent/90 transition-colors disabled:opacity-50"
+                disabled={loading || !config.symbol}
+                className="btn btn-primary btn-block"
               >
-                <Play className="w-4 h-4" />
+                <Play size={14} />
                 {loading ? 'Running...' : 'Run Backtest'}
               </button>
             </div>
           </div>
         </div>
 
-        <div className="lg:col-span-2">
-          {result ? (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="p-4 bg-bg-secondary rounded-lg border border-border">
-                  <div className="text-text-secondary text-sm mb-1">Final Capital</div>
-                  <div className="text-xl font-bold text-text-primary">{formatCurrency(result.final_capital)}</div>
+        <div className="backtest-results">
+          {loading ? (
+            <div className="card">
+              <div className="loading-container">
+                <div className="loading-spinner"></div>
+                <span className="mt-2">Running backtest...</span>
+              </div>
+            </div>
+          ) : error ? (
+            <div className="card">
+              <div className="empty-state text-loss">
+                {error}
+              </div>
+            </div>
+          ) : result ? (
+            <div className="results-content">
+              <div className="summary-grid results-grid">
+                <div className="summary-card">
+                  <div className="summary-card-label">Final Capital</div>
+                  <div className="summary-card-value">Rs. {result.final_capital.toLocaleString()}</div>
                 </div>
-                <div className="p-4 bg-bg-secondary rounded-lg border border-border">
-                  <div className="text-text-secondary text-sm mb-1">Total Return</div>
-                  <div className={`text-xl font-bold ${result.total_return >= 0 ? 'text-gain' : 'text-loss'}`}>
+                <div className="summary-card">
+                  <div className="summary-card-label">Total Return</div>
+                  <div className={`summary-card-value ${result.total_return >= 0 ? 'text-gain' : 'text-loss'}`}>
                     {result.total_return >= 0 ? '+' : ''}{result.total_return_percent.toFixed(2)}%
                   </div>
                 </div>
-                <div className="p-4 bg-bg-secondary rounded-lg border border-border">
-                  <div className="text-text-secondary text-sm mb-1">Total Trades</div>
-                  <div className="text-xl font-bold text-text-primary">{result.total_trades}</div>
+                <div className="summary-card">
+                  <div className="summary-card-label">Total Trades</div>
+                  <div className="summary-card-value">{result.total_trades}</div>
                 </div>
-                <div className="p-4 bg-bg-secondary rounded-lg border border-border">
-                  <div className="text-text-secondary text-sm mb-1">Win Rate</div>
-                  <div className="text-xl font-bold text-text-primary">{result.win_rate.toFixed(1)}%</div>
+                <div className="summary-card">
+                  <div className="summary-card-label">Win Rate</div>
+                  <div className="summary-card-value">{result.win_rate.toFixed(1)}%</div>
+                </div>
+                <div className="summary-card">
+                  <div className="summary-card-label">Max Drawdown</div>
+                  <div className="summary-card-value text-loss">
+                    {result.max_drawdown_percent.toFixed(2)}%
+                  </div>
+                </div>
+                <div className="summary-card">
+                  <div className="summary-card-label">W/L Ratio</div>
+                  <div className="summary-card-value">
+                    <span className="text-gain">{result.winning_trades}</span>
+                    {' / '}
+                    <span className="text-loss">{result.losing_trades}</span>
+                  </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 bg-bg-secondary rounded-lg border border-border">
-                  <div className="text-text-secondary text-sm mb-1">Max Drawdown</div>
-                  <div className="text-lg font-semibold text-loss">
-                    {formatCurrency(result.max_drawdown)} ({result.max_drawdown_percent.toFixed(2)}%)
-                  </div>
+              <div className="card mt-4">
+                <div className="card-header">
+                  <span className="flex items-center gap-2">
+                    <Calendar size={14} />
+                    TRADE HISTORY
+                  </span>
                 </div>
-                <div className="p-4 bg-bg-secondary rounded-lg border border-border">
-                  <div className="text-text-secondary text-sm mb-1">Winning/Losing</div>
-                  <div className="text-lg font-semibold text-text-primary">
-                    <span className="text-gain">{result.winning_trades}</span> / <span className="text-loss">{result.losing_trades}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-bg-secondary rounded-lg border border-border overflow-hidden">
-                <div className="p-3 bg-bg-tertiary border-b border-border">
-                  <h3 className="font-semibold text-text-primary flex items-center gap-2">
-                    <Calendar className="w-4 h-4" />
-                    Trade History
-                  </h3>
-                </div>
-                <table className="w-full">
-                  <thead className="bg-bg-tertiary">
-                    <tr>
-                      <th className="px-4 py-2 text-left text-text-secondary font-medium">Date</th>
-                      <th className="px-4 py-2 text-left text-text-secondary font-medium">Type</th>
-                      <th className="px-4 py-2 text-right text-text-secondary font-medium">Price</th>
-                      <th className="px-4 py-2 text-right text-text-secondary font-medium">Qty</th>
-                      <th className="px-4 py-2 text-right text-text-secondary font-medium">Amount</th>
-                      <th className="px-4 py-2 text-left text-text-secondary font-medium">Reason</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {result.trades.map((trade, idx) => (
-                      <tr key={idx} className="border-t border-border">
-                        <td className="px-4 py-2 text-text-primary text-sm">{trade.date}</td>
-                        <td className="px-4 py-2">
-                          <span
-                            className={`px-2 py-0.5 rounded text-xs font-medium ${
-                              trade.type === 'BUY' ? 'bg-loss/20 text-loss' : 'bg-gain/20 text-gain'
-                            }`}
-                          >
-                            {trade.type}
-                          </span>
-                        </td>
-                        <td className="px-4 py-2 text-right text-text-primary">Rs. {trade.price.toLocaleString()}</td>
-                        <td className="px-4 py-2 text-right text-text-primary">{trade.quantity}</td>
-                        <td className="px-4 py-2 text-right text-text-primary">{formatCurrency(trade.amount)}</td>
-                        <td className="px-4 py-2 text-text-secondary text-sm">{trade.reason}</td>
+                <div className="table-container">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>Type</th>
+                        <th style={{ textAlign: 'right' }}>Price</th>
+                        <th style={{ textAlign: 'right' }}>Qty</th>
+                        <th style={{ textAlign: 'right' }}>Amount</th>
+                        <th>Reason</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {result.trades.map((trade, idx) => (
+                        <tr key={idx}>
+                          <td className="font-mono">{trade.date}</td>
+                          <td>
+                            <span className={`badge badge-${trade.type.toLowerCase()}`}>
+                              {trade.type}
+                            </span>
+                          </td>
+                          <td className="font-mono" style={{ textAlign: 'right' }}>
+                            Rs. {trade.price.toLocaleString()}
+                          </td>
+                          <td className="font-mono" style={{ textAlign: 'right' }}>{trade.quantity}</td>
+                          <td className="font-mono" style={{ textAlign: 'right' }}>
+                            {formatCurrency(trade.amount)}
+                          </td>
+                          <td className="text-secondary">{trade.reason}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           ) : (
-            <div className="p-8 bg-bg-secondary rounded-lg border border-border text-center">
-              <TrendingUp className="w-12 h-12 text-text-secondary mx-auto mb-4" />
-              <p className="text-text-secondary">
-                Configure your backtest parameters and click "Run Backtest" to see results.
-              </p>
+            <div className="card">
+              <div className="empty-state">
+                <TrendingUp size={48} className="text-muted mb-4" />
+                <p>Configure your backtest parameters and click "Run Backtest" to see results.</p>
+              </div>
             </div>
           )}
         </div>
       </div>
+
+      <style>{`
+        .backtesting {
+          max-width: 1400px;
+          margin: 0 auto;
+        }
+
+        .backtest-grid {
+          display: grid;
+          grid-template-columns: 380px 1fr;
+          gap: 16px;
+        }
+
+        .backtest-config {
+          position: sticky;
+          top: 16px;
+          height: fit-content;
+        }
+
+        .backtest-results {
+          min-width: 0;
+        }
+
+        .results-grid {
+          grid-template-columns: repeat(3, 1fr);
+        }
+
+        .form-row {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 12px;
+        }
+
+        .form-group {
+          margin-bottom: 12px;
+        }
+
+        .form-label {
+          display: block;
+          margin-bottom: 6px;
+          font-size: 0.75rem;
+          color: var(--text-muted);
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+
+        .form-input,
+        .form-select {
+          width: 100%;
+          padding: 10px 12px;
+          background: var(--bg-tertiary);
+          border: 1px solid var(--border);
+          border-radius: 4px;
+          color: var(--text-primary);
+          font-family: 'JetBrains Mono', monospace;
+          font-size: 0.85rem;
+        }
+
+        .form-input:focus,
+        .form-select:focus {
+          outline: none;
+          border-color: var(--accent);
+        }
+
+        .form-select {
+          cursor: pointer;
+        }
+
+        .strategy-info {
+          padding: 12px;
+          background: var(--bg-tertiary);
+          border-radius: 4px;
+          margin-bottom: 16px;
+          font-size: 0.8rem;
+        }
+
+        .strategy-title {
+          font-weight: 600;
+          margin-bottom: 8px;
+        }
+
+        .strategy-info ul {
+          margin: 0;
+          padding-left: 16px;
+          color: var(--text-secondary);
+        }
+
+        .strategy-info li {
+          margin-bottom: 4px;
+        }
+
+        .badge {
+          display: inline-block;
+          padding: 2px 8px;
+          border-radius: 3px;
+          font-size: 0.7rem;
+          font-weight: 600;
+          text-transform: uppercase;
+        }
+
+        .badge-buy {
+          background: rgba(255, 59, 48, 0.2);
+          color: #ff6b6b;
+        }
+
+        .badge-sell {
+          background: rgba(0, 200, 83, 0.2);
+          color: #00c853;
+        }
+
+        .btn-block {
+          width: 100%;
+        }
+
+        .mt-2 {
+          margin-top: 8px;
+        }
+
+        @media (max-width: 1024px) {
+          .backtest-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .backtest-config {
+            position: static;
+          }
+
+          .results-grid {
+            grid-template-columns: repeat(2, 1fr);
+          }
+        }
+
+        @media (max-width: 640px) {
+          .results-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .form-row {
+            grid-template-columns: 1fr;
+          }
+        }
+      `}</style>
     </div>
   );
 }

@@ -56,3 +56,4 @@ yarn-error.log*
 # Vite
 .rollup.cache/
 .vercel
+.env*.local

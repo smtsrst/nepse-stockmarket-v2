@@ -1,17 +1,26 @@
 import { useState, useEffect } from 'react';
-import { api } from '../api/client';
-import { Wallet, Plus, Trash2 } from 'lucide-react';
-import type { Portfolio, PortfolioPerformance } from '../types';
-import StockSelect from '../components/StockSelect';
+import { Wallet, Plus, Trash2, TrendingUp, TrendingDown, Search } from 'lucide-react';
 
+const API_URL = import.meta.env.VITE_API_URL || 'https://frontend-eight-tan-70.vercel.app/api';
 const LOCAL_HOLDINGS_KEY = 'nepse_holdings';
 const TRANSACTIONS_KEY = 'nepse_transactions';
+
+interface Stock {
+  symbol: string;
+  name: string;
+  lastTradedPrice: number;
+  percentageChange: number;
+}
 
 interface LocalHolding {
   symbol: string;
   quantity: number;
   avg_price: number;
   total_cost: number;
+  current_price?: number;
+  current_value?: number;
+  profit_loss?: number;
+  profit_loss_percent?: number;
 }
 
 interface Transaction {
@@ -26,108 +35,73 @@ interface Transaction {
 }
 
 export default function PortfolioPage() {
-  const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
-  const [selectedPortfolio, setSelectedPortfolio] = useState<Portfolio | null>(null);
-  const [performance, setPerformance] = useState<PortfolioPerformance | null>(null);
+  const [stocks, setStocks] = useState<Stock[]>([]);
   const [localHoldings, setLocalHoldings] = useState<LocalHolding[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [newPortfolioName, setNewPortfolioName] = useState('');
   const [showAddHolding, setShowAddHolding] = useState(false);
   const [newHolding, setNewHolding] = useState({ symbol: '', quantity: 0, avgPrice: 0 });
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
-    loadPortfolios();
-    loadLocalHoldings();
+    loadData();
+    const interval = setInterval(loadStockPrices, 30000);
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
-    if (selectedPortfolio) {
-      loadPerformance(selectedPortfolio.id);
-    }
-  }, [selectedPortfolio]);
-
-  useEffect(() => {
-    const handleStorageChange = () => {
-      loadLocalHoldings();
-    };
+    const handleStorageChange = () => loadLocalHoldings();
     window.addEventListener('holdingsUpdated', handleStorageChange);
-    window.addEventListener('storage', handleStorageChange);
-    return () => {
-      window.removeEventListener('holdingsUpdated', handleStorageChange);
-      window.removeEventListener('storage', handleStorageChange);
-    };
+    return () => window.removeEventListener('holdingsUpdated', handleStorageChange);
   }, []);
+
+  const loadData = async () => {
+    try {
+      const stockData = await fetch(`${API_URL}/stocks`).then(r => r.json()).catch(() => []);
+      setStocks(stockData);
+      loadLocalHoldings();
+    } catch (error) {
+      console.error('Error loading data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadStockPrices = async () => {
+    try {
+      const stockData = await fetch(`${API_URL}/stocks`).then(r => r.json()).catch(() => []);
+      setStocks(stockData);
+      updateHoldingsWithPrices(stockData, localHoldings);
+    } catch (error) {
+      console.error('Error updating prices:', error);
+    }
+  };
 
   const loadLocalHoldings = () => {
     const saved = localStorage.getItem(LOCAL_HOLDINGS_KEY);
     if (saved) {
       try {
-        setLocalHoldings(JSON.parse(saved));
+        const holdings: LocalHolding[] = JSON.parse(saved);
+        setLocalHoldings(holdings);
       } catch {
         setLocalHoldings([]);
       }
     }
   };
 
-  const loadPortfolios = async () => {
-    try {
-      const data = await api.getPortfolios();
-      setPortfolios(data);
-      if (data.length > 0 && !selectedPortfolio) {
-        setSelectedPortfolio(data[0]);
-      }
-    } catch (error: any) {
-      console.error('Error loading portfolios:', error);
-      // If not authenticated, show empty state
-      if (error.response?.status === 401) {
-        setPortfolios([]);
-      }
-    } finally {
-      setLoading(false);
-    }
+  const updateHoldingsWithPrices = (stockData: Stock[], holdings: LocalHolding[]) => {
+    const updated = holdings.map(h => {
+      const stock = stockData.find(s => s.symbol === h.symbol);
+      const current_price = stock?.lastTradedPrice || h.avg_price;
+      const current_value = h.quantity * current_price;
+      const profit_loss = current_value - h.total_cost;
+      const profit_loss_percent = (profit_loss / h.total_cost) * 100;
+      return { ...h, current_price, current_value, profit_loss, profit_loss_percent };
+    });
+    setLocalHoldings(updated);
   };
 
-  const loadPerformance = async (id: number) => {
-    try {
-      const data = await api.getPortfolioPerformance(id);
-      setPerformance(data);
-    } catch (error) {
-      console.error('Error loading performance:', error);
-    }
-  };
-
-  const handleCreatePortfolio = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newPortfolioName.trim()) return;
-
-    try {
-      const portfolio = await api.createPortfolio(newPortfolioName);
-      setPortfolios([...portfolios, portfolio]);
-      setSelectedPortfolio(portfolio);
-      setShowAddModal(false);
-      setNewPortfolioName('');
-    } catch (error) {
-      console.error('Error creating portfolio:', error);
-    }
-  };
-
-  const handleDeletePortfolio = async (id: number) => {
-    if (!confirm('Are you sure you want to delete this portfolio?')) return;
-
-    try {
-      await api.deletePortfolio(id);
-      setPortfolios(portfolios.filter(p => p.id !== id));
-      if (selectedPortfolio?.id === id) {
-        setSelectedPortfolio(portfolios[0] || null);
-        setPerformance(null);
-      }
-    } catch (error) {
-      console.error('Error deleting portfolio:', error);
-    }
-  };
-
-  const handleAddHolding = async (e: React.FormEvent) => {
+  const handleAddHolding = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newHolding.symbol || newHolding.quantity <= 0) return;
 
@@ -188,16 +162,15 @@ export default function PortfolioPage() {
 
     localStorage.setItem(LOCAL_HOLDINGS_KEY, JSON.stringify(holdings));
     setLocalHoldings(holdings);
+    updateHoldingsWithPrices(stocks, holdings);
   };
 
-  const handleDeleteHolding = async (symbol: string) => {
+  const handleDeleteHolding = (symbol: string) => {
     const holding = localHoldings.find(h => h.symbol === symbol);
     if (!holding || !confirm(`Sell all ${symbol} from portfolio?`)) return;
 
-    const transactionId = Date.now();
-    
     const newTransaction: Transaction = {
-      id: transactionId,
+      id: Date.now(),
       symbol,
       type: 'SELL',
       quantity: holding.quantity,
@@ -215,115 +188,112 @@ export default function PortfolioPage() {
     window.dispatchEvent(new CustomEvent('holdingsUpdated'));
   };
 
-  const formatCurrency = (num: number | undefined) => {
-    if (num === undefined) return 'Rs. 0';
-    return `Rs. ${num.toFixed(2)}`;
-  };
+  const filteredStocks = stocks.filter(s => 
+    s.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    s.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-text-secondary">Loading...</div>
-      </div>
-    );
-  }
+  const totalInvested = localHoldings.reduce((sum, h) => sum + h.total_cost, 0);
+  const totalCurrentValue = localHoldings.reduce((sum, h) => sum + (h.current_value || 0), 0);
+  const totalProfitLoss = totalCurrentValue - totalInvested;
+  const totalProfitLossPercent = totalInvested > 0 ? (totalProfitLoss / totalInvested) * 100 : 0;
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold text-text-primary">Portfolio</h1>
-          <p className="text-text-secondary text-sm">Track your investments</p>
+    <div className="portfolio">
+      <div className="dashboard-header">
+        <div className="header-left">
+          <h1 className="page-title">PORTFOLIO</h1>
         </div>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="button flex items-center gap-2"
-          >
-            <Plus className="w-4 h-4" />
-            New Portfolio
+        <div className="header-right">
+          <button onClick={() => setShowAddHolding(true)} className="btn btn-primary">
+            <Plus size={14} />
+            Add Stock
           </button>
         </div>
       </div>
 
-      {/* Holdings Summary */}
-      {localHoldings.length > 0 && (
-        <div className="p-4 bg-accent/10 border border-accent/30 rounded-lg">
-          <div className="text-sm text-text-secondary mb-2">From Transaction History</div>
-          <div className="text-2xl font-bold text-text-primary">
-            {localHoldings.length} stocks · {formatCurrency(localHoldings.reduce((sum, h) => sum + h.total_cost, 0))} invested
-          </div>
+      {loading ? (
+        <div className="loading-container">
+          <div className="loading-spinner"></div>
         </div>
-      )}
-
-      {/* Portfolio Selector */}
-      {portfolios.length > 0 && (
-        <div className="flex gap-2 overflow-x-auto pb-2 items-center">
-          {portfolios.map((portfolio) => (
-            <div key={portfolio.id} className="flex items-center">
-              <button
-                onClick={() => setSelectedPortfolio(portfolio)}
-                className={`px-4 py-2 rounded text-sm whitespace-nowrap ${
-                  selectedPortfolio?.id === portfolio.id
-                    ? 'bg-accent text-bg-primary'
-                    : 'bg-bg-secondary text-text-secondary hover:text-text-primary'
-                }`}
-              >
-                {portfolio.name}
-              </button>
-              <button
-                onClick={() => handleDeletePortfolio(portfolio.id)}
-                className="ml-1 p-1 text-text-secondary hover:text-loss rounded"
-                title="Delete portfolio"
-              >
-                <Trash2 className="w-3 h-3" />
-              </button>
-            </div>
-          ))}
+      ) : localHoldings.length === 0 ? (
+        <div className="card text-center py-16">
+          <Wallet size={48} className="mx-auto mb-4 text-muted" />
+          <h2 className="text-lg font-medium mb-2">No Holdings</h2>
+          <p className="text-muted mb-4">Add your first stock to track your portfolio</p>
+          <button onClick={() => setShowAddHolding(true)} className="btn btn-primary">
+            <Plus size={14} />
+            Add Stock
+          </button>
         </div>
-      )}
-
-      {portfolios.length === 0 ? (
-        <div className="card text-center py-12">
-          <Wallet className="w-12 h-12 text-text-secondary mx-auto mb-4" />
-          <h2 className="text-lg font-medium text-text-primary mb-2">No Portfolios Yet</h2>
-          <p className="text-text-secondary mb-4">Add transactions to track your investments</p>
-        </div>
-      ) : localHoldings.length > 0 ? (
+      ) : (
         <>
-          <div className="grid grid-cols-4 gap-4">
-            <div className="card">
-              <div className="text-text-secondary text-sm">Total Invested</div>
-              <div className="text-xl font-bold text-text-primary">
-                {formatCurrency(localHoldings.reduce((sum, h) => sum + h.total_cost, 0))}
+          <div className="summary-grid">
+            <div className="summary-card">
+              <div className="summary-card-label">Total Invested</div>
+              <div className="summary-card-value">Rs. {totalInvested.toLocaleString()}</div>
+            </div>
+            <div className="summary-card">
+              <div className="summary-card-label">Current Value</div>
+              <div className="summary-card-value">Rs. {totalCurrentValue.toLocaleString()}</div>
+            </div>
+            <div className="summary-card">
+              <div className="summary-card-label">Profit/Loss</div>
+              <div className={`summary-card-value ${totalProfitLoss >= 0 ? 'text-gain' : 'text-loss'}`}>
+                {totalProfitLoss >= 0 ? '+' : ''}Rs. {totalProfitLoss.toLocaleString()}
               </div>
             </div>
-            <div className="card">
-              <div className="text-text-secondary text-sm">Total Stocks</div>
-              <div className="text-xl font-bold text-text-primary">{localHoldings.length}</div>
+            <div className="summary-card">
+              <div className="summary-card-label">Return</div>
+              <div className={`summary-card-value ${totalProfitLossPercent >= 0 ? 'text-gain' : 'text-loss'}`}>
+                {totalProfitLossPercent >= 0 ? '+' : ''}{totalProfitLossPercent.toFixed(2)}%
+              </div>
             </div>
           </div>
 
-          <div className="card">
-            <h2 className="text-lg font-semibold text-text-primary mb-4">Holdings from Transactions</h2>
-            <div className="overflow-x-auto">
-              <table className="w-full">
+          <div className="card mt-4">
+            <div className="table-container">
+              <table className="data-table">
                 <thead>
-                  <tr className="text-text-secondary text-sm border-b border-border">
-                    <th className="text-left py-2">Symbol</th>
-                    <th className="text-right py-2">Quantity</th>
-                    <th className="text-right py-2">Avg Price</th>
-                    <th className="text-right py-2">Total Cost</th>
+                  <tr>
+                    <th>Symbol</th>
+                    <th style={{ textAlign: 'right' }}>Qty</th>
+                    <th style={{ textAlign: 'right' }}>Avg Price</th>
+                    <th style={{ textAlign: 'right' }}>Current</th>
+                    <th style={{ textAlign: 'right' }}>Value</th>
+                    <th style={{ textAlign: 'right' }}>P/L</th>
+                    <th style={{ textAlign: 'right' }}>P/L %</th>
+                    <th style={{ width: 60 }}></th>
                   </tr>
                 </thead>
                 <tbody>
                   {localHoldings.map((holding) => (
-                    <tr key={holding.symbol} className="border-b border-border text-sm">
-                      <td className="py-3 font-medium text-text-primary">{holding.symbol}</td>
-                      <td className="py-3 text-right text-text-primary">{holding.quantity}</td>
-                      <td className="py-3 text-right text-text-primary">{formatCurrency(holding.avg_price)}</td>
-                      <td className="py-3 text-right text-text-primary">{formatCurrency(holding.total_cost)}</td>
+                    <tr key={holding.symbol}>
+                      <td className="font-mono font-semibold">{holding.symbol}</td>
+                      <td className="font-mono" style={{ textAlign: 'right' }}>{holding.quantity}</td>
+                      <td className="font-mono" style={{ textAlign: 'right' }}>
+                        Rs. {holding.avg_price?.toLocaleString()}
+                      </td>
+                      <td className="font-mono" style={{ textAlign: 'right' }}>
+                        Rs. {(holding.current_price || holding.avg_price)?.toLocaleString()}
+                      </td>
+                      <td className="font-mono" style={{ textAlign: 'right' }}>
+                        Rs. {(holding.current_value || holding.total_cost)?.toLocaleString()}
+                      </td>
+                      <td className={`font-mono ${(holding.profit_loss || 0) >= 0 ? 'text-gain' : 'text-loss'}`} style={{ textAlign: 'right' }}>
+                        {(holding.profit_loss || 0) >= 0 ? '+' : ''}Rs. {(holding.profit_loss || 0).toLocaleString()}
+                      </td>
+                      <td className={`font-mono ${(holding.profit_loss_percent || 0) >= 0 ? 'text-gain' : 'text-loss'}`} style={{ textAlign: 'right' }}>
+                        {(holding.profit_loss_percent || 0) >= 0 ? '+' : ''}{(holding.profit_loss_percent || 0).toFixed(2)}%
+                      </td>
+                      <td>
+                        <button
+                          onClick={() => handleDeleteHolding(holding.symbol)}
+                          className="btn btn-ghost btn-icon text-loss"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -331,199 +301,173 @@ export default function PortfolioPage() {
             </div>
           </div>
         </>
-      ) : performance && (
-        <>
-          {/* Performance Summary */}
-          <div className="grid grid-cols-4 gap-4">
-            <div className="card">
-              <div className="text-text-secondary text-sm">Total Invested</div>
-              <div className="text-xl font-bold text-text-primary">
-                {formatCurrency(performance.total_invested)}
-              </div>
-            </div>
-            <div className="card">
-              <div className="text-text-secondary text-sm">Current Value</div>
-              <div className="text-xl font-bold text-text-primary">
-                {formatCurrency(performance.current_value)}
-              </div>
-            </div>
-            <div className="card">
-              <div className="text-text-secondary text-sm">Profit/Loss</div>
-              <div className={`text-xl font-bold ${performance.profit_loss >= 0 ? 'text-gain' : 'text-loss'}`}>
-                {performance.profit_loss >= 0 ? '+' : ''}
-                {formatCurrency(performance.profit_loss)}
-              </div>
-            </div>
-            <div className="card">
-              <div className="text-text-secondary text-sm">Return</div>
-              <div className={`text-xl font-bold ${performance.profit_loss_percent >= 0 ? 'text-gain' : 'text-loss'}`}>
-                {performance.profit_loss_percent >= 0 ? '+' : ''}
-                {performance.profit_loss_percent.toFixed(2)}%
-              </div>
-            </div>
-          </div>
+      )}
 
-          {/* Holdings */}
-          <div className="card">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-lg font-semibold text-text-primary">Holdings</h2>
-              <button
-                onClick={() => setShowAddHolding(true)}
-                className="button flex items-center gap-1 text-sm"
-              >
-                <Plus className="w-4 h-4" />
-                Add Stock
+      {showAddHolding && (
+        <div className="modal-overlay" onClick={() => setShowAddHolding(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="modal-title">ADD STOCK</h2>
+              <button onClick={() => setShowAddHolding(false)} className="btn btn-ghost btn-icon">
+                ×
               </button>
             </div>
-            {performance.holdings.length === 0 ? (
-              <p className="text-text-secondary text-center py-4">No holdings in this portfolio</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="text-text-secondary text-sm border-b border-border">
-                      <th className="text-left py-2">Symbol</th>
-                      <th className="text-right py-2">Quantity</th>
-                      <th className="text-right py-2">Avg Price</th>
-                      <th className="text-right py-2">Current</th>
-                      <th className="text-right py-2">P/L</th>
-                      <th className="text-right py-2">P/L %</th>
-                      <th className="text-right py-2 w-20"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {performance.holdings.map((holding) => (
-                      <tr key={holding.symbol} className="border-b border-border text-sm">
-                        <td className="py-3 font-medium text-text-primary">{holding.symbol}</td>
-                        <td className="py-3 text-right text-text-primary">{holding.quantity}</td>
-                        <td className="py-3 text-right text-text-primary">
-                          {formatCurrency(holding.avg_price)}
-                        </td>
-                        <td className="py-3 text-right text-text-primary">
-                          {formatCurrency(holding.current_price)}
-                        </td>
-                        <td className={`py-3 text-right ${(holding.profit_loss || 0) >= 0 ? 'text-gain' : 'text-loss'}`}>
-                          {(holding.profit_loss || 0) >= 0 ? '+' : ''}
-                          {formatCurrency(holding.profit_loss)}
-                        </td>
-                        <td className={`py-3 text-right ${(holding.profit_loss_percent || 0) >= 0 ? 'text-gain' : 'text-loss'}`}>
-                          {(holding.profit_loss_percent || 0) >= 0 ? '+' : ''}
-                          {holding.profit_loss_percent?.toFixed(2)}%
-                        </td>
-                        <td className="py-3 text-right">
-                          <button
-                            onClick={() => handleDeleteHolding(holding.symbol)}
-                            className="text-loss hover:text-loss/70 text-xs flex items-center gap-1 ml-auto"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                            Delete
-                          </button>
-                        </td>
-                      </tr>
+            <form onSubmit={handleAddHolding}>
+              <div className="modal-body">
+                <div className="form-group">
+                  <label className="form-label">Stock</label>
+                  <div className="search-container">
+                    <Search size={16} className="search-icon" />
+                    <input
+                      type="text"
+                      placeholder="Search stocks..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="search-input"
+                    />
+                  </div>
+                  <div className="stock-select-list">
+                    {filteredStocks.slice(0, 15).map((stock) => (
+                      <div
+                        key={stock.symbol}
+                        onClick={() => { setNewHolding({ ...newHolding, symbol: stock.symbol }); setSearchQuery(''); }}
+                        className={`stock-select-item ${newHolding.symbol === stock.symbol ? 'selected' : ''}`}
+                      >
+                        <div className="stock-avatar">{stock.symbol.slice(0, 2)}</div>
+                        <div className="stock-info">
+                          <div className="stock-symbol">{stock.symbol}</div>
+                          <div className="stock-name">{stock.name}</div>
+                        </div>
+                      </div>
                     ))}
-                  </tbody>
-                </table>
+                  </div>
+                  {newHolding.symbol && (
+                    <div className="selected-stock">
+                      Selected: <strong>{newHolding.symbol}</strong>
+                    </div>
+                  )}
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Quantity</label>
+                  <input
+                    type="number"
+                    value={newHolding.quantity || ''}
+                    onChange={(e) => setNewHolding({ ...newHolding, quantity: parseInt(e.target.value) || 0 })}
+                    className="form-input"
+                    placeholder="Number of shares"
+                    min="1"
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Average Price (Rs.)</label>
+                  <input
+                    type="number"
+                    value={newHolding.avgPrice || ''}
+                    onChange={(e) => setNewHolding({ ...newHolding, avgPrice: parseFloat(e.target.value) || 0 })}
+                    className="form-input"
+                    placeholder="Average purchase price"
+                    step="0.01"
+                    min="0"
+                  />
+                </div>
               </div>
-            )}
-          </div>
-
-          {/* Delete Portfolio */}
-          {selectedPortfolio && (
-            <button
-              onClick={() => handleDeletePortfolio(selectedPortfolio.id)}
-              className="text-loss text-sm hover:underline flex items-center gap-1"
-            >
-              <Trash2 className="w-4 h-4" />
-              Delete Portfolio
-            </button>
-          )}
-        </>
-      )}
-
-      {/* Add Portfolio Modal */}
-      {showAddModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-bg-secondary border border-border p-6 rounded w-full max-w-md">
-            <h2 className="text-xl font-bold text-text-primary mb-4">New Portfolio</h2>
-            <form onSubmit={handleCreatePortfolio}>
-              <input
-                type="text"
-                value={newPortfolioName}
-                onChange={(e) => setNewPortfolioName(e.target.value)}
-                className="input w-full mb-4"
-                placeholder="Portfolio name"
-                autoFocus
-              />
-              <div className="flex gap-2">
-                <button type="submit" className="button flex-1">
-                  Create
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowAddModal(false)}
-                  className="button-secondary flex-1"
-                >
+              <div className="modal-footer">
+                <button type="button" onClick={() => setShowAddHolding(false)} className="btn btn-ghost">
                   Cancel
                 </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Add Holding Modal */}
-      {showAddHolding && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-bg-secondary border border-border p-6 rounded w-full max-w-md">
-            <h2 className="text-xl font-bold text-text-primary mb-4">Add Stock to Portfolio</h2>
-            <form onSubmit={handleAddHolding}>
-              <div className="mb-4">
-                <label className="block text-text-secondary text-sm mb-2">Stock Symbol</label>
-                <StockSelect
-                  value={newHolding.symbol}
-                  onChange={(symbol) => setNewHolding({ ...newHolding, symbol })}
-                  placeholder="Select a stock..."
-                />
-              </div>
-              <div className="mb-4">
-                <label className="block text-text-secondary text-sm mb-2">Quantity</label>
-                <input
-                  type="number"
-                  value={newHolding.quantity || ''}
-                  onChange={(e) => setNewHolding({ ...newHolding, quantity: parseInt(e.target.value) || 0 })}
-                  className="input w-full"
-                  placeholder="Number of shares"
-                  min="1"
-                />
-              </div>
-              <div className="mb-4">
-                <label className="block text-text-secondary text-sm mb-2">Average Price (Rs.)</label>
-                <input
-                  type="number"
-                  value={newHolding.avgPrice || ''}
-                  onChange={(e) => setNewHolding({ ...newHolding, avgPrice: parseFloat(e.target.value) || 0 })}
-                  className="input w-full"
-                  placeholder="Average purchase price"
-                  step="0.01"
-                  min="0"
-                />
-              </div>
-              <div className="flex gap-2">
-                <button type="submit" className="button flex-1">
+                <button type="submit" className="btn btn-primary" disabled={!newHolding.symbol || newHolding.quantity <= 0}>
                   Add
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setShowAddHolding(false)}
-                  className="button-secondary flex-1"
-                >
-                  Cancel
-                </button>
               </div>
             </form>
           </div>
         </div>
       )}
+
+      <style>{`
+        .portfolio {
+          max-width: 1400px;
+          margin: 0 auto;
+        }
+
+        .selected-stock {
+          margin-top: 8px;
+          padding: 8px 12px;
+          background: var(--accent);
+          color: var(--bg-primary);
+          border-radius: 4px;
+          font-size: 0.85rem;
+        }
+
+        .form-group {
+          margin-bottom: 16px;
+        }
+
+        .form-label {
+          display: block;
+          margin-bottom: 6px;
+          font-size: 0.8rem;
+          color: var(--text-muted);
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+
+        .form-input {
+          width: 100%;
+          padding: 10px 12px;
+          background: var(--bg-tertiary);
+          border: 1px solid var(--border);
+          border-radius: 4px;
+          color: var(--text-primary);
+          font-family: 'JetBrains Mono', monospace;
+          font-size: 0.85rem;
+        }
+
+        .form-input:focus {
+          outline: none;
+          border-color: var(--accent);
+        }
+
+        .stock-select-list {
+          max-height: 150px;
+          overflow-y: auto;
+          margin-top: 8px;
+          border: 1px solid var(--border);
+          border-radius: 4px;
+        }
+
+        .stock-select-item {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 8px 12px;
+          cursor: pointer;
+          transition: background 0.15s;
+        }
+
+        .stock-select-item:hover {
+          background: var(--bg-tertiary);
+        }
+
+        .stock-select-item.selected {
+          background: var(--accent);
+          color: var(--bg-primary);
+        }
+
+        .modal-footer {
+          display: flex;
+          justify-content: flex-end;
+          gap: 8px;
+          padding: 16px 20px;
+          border-top: 1px solid var(--border);
+        }
+
+        @media (max-width: 768px) {
+          .summary-grid {
+            grid-template-columns: repeat(2, 1fr) !important;
+          }
+        }
+      `}</style>
     </div>
   );
 }

@@ -1,56 +1,43 @@
 import { neon } from '@neondatabase/serverless';
 
-const connectionString = process.env.DATABASE_URL;
-
-let sql = connectionString ? neon(connectionString) : null;
-
-export interface StockPrice {
-  id: number;
-  symbol: string;
-  date: string;
-  open: number | null;
-  high: number | null;
-  low: number | null;
-  close: number | null;
-  volume: number | null;
-  created_at: string | null;
-}
-
-export interface Prediction {
-  id: number;
-  symbol: string;
-  prediction: string;
-  confidence: number;
-  current_price: number;
-  predicted_price: number;
-  change_percent: number;
-  created_at: string;
-}
+const connectionString = process.env.NEON_DATABASE_URL || process.env.NEON_URL || process.env.DATABASE_URL;
 
 export function isDbConfigured(): boolean {
-  return !!sql;
+  return !!connectionString;
+}
+
+export function getSql() {
+  if (!connectionString) {
+    throw new Error('Database not configured');
+  }
+  return neon(connectionString);
 }
 
 export async function query<T>(text: string, params?: unknown[]): Promise<T[]> {
-  if (!sql) {
-    console.warn('Database not configured');
-    throw new Error('Database not configured');
+  const sql = getSql();
+  const paramArray = params || [];
+
+  let result: any;
+  if (paramArray.length === 0) {
+    result = await sql`${text}`;
+  } else if (paramArray.length === 1) {
+    result = await sql`SELECT * FROM (${text}) AS sub WHERE 1=1`.catch(() => {
+      let q = text;
+      q = q.replace('$1', typeof paramArray[0] === 'string' ? `'${paramArray[0]}'` : String(paramArray[0]));
+      return sql`${q}`;
+    });
+  } else {
+    let q = text;
+    paramArray.forEach((p, i) => {
+      q = q.replace(`$${i + 1}`, typeof p === 'string' ? `'${p}'` : String(p));
+    });
+    result = await sql`${q}`;
   }
-  
-  try {
-    const result = await sql(text, params);
-    return result as T[];
-  } catch (error) {
-    console.error('Database query error:', error);
-    throw error;
-  }
+
+  return result as T[];
 }
 
 export async function queryOne<T>(text: string, params?: unknown[]): Promise<T | null> {
-  try {
-    const results = await query<T>(text, params);
-    return results[0] || null;
-  } catch {
-    return null;
-  }
+  const results = await query<T>(text, params);
+  return results[0] || null;
 }

@@ -1,223 +1,255 @@
 import { useState, useEffect } from 'react';
-import { api } from '../api/client';
-import { PieChart, TrendingUp, TrendingDown } from 'lucide-react';
-import type { PortfolioPerformance } from '../types';
+import { useNavigate } from 'react-router-dom';
+import { RefreshCw, BarChart2 } from 'lucide-react';
 
-interface HeatmapData {
+const API_URL = import.meta.env.VITE_API_URL || 'https://frontend-eight-tan-70.vercel.app/api';
+
+interface Stock {
   symbol: string;
-  value: number;
-  change: number;
-  weight: number;
+  name: string;
+  lastTradedPrice: number;
+  percentageChange: number;
+  volume: number;
 }
 
-export default function HeatmapPage() {
-  const [performance, setPerformance] = useState<PortfolioPerformance | null>(null);
+export default function Heatmap() {
+  const [stocks, setStocks] = useState<Stock[]>([]);
   const [loading, setLoading] = useState(true);
-  const [portfolios, setPortfolios] = useState<{id: number, name: string}[]>([]);
-  const [selectedPortfolioId, setSelectedPortfolioId] = useState<number | null>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
-    loadPortfolios();
+    loadData();
   }, []);
 
-  const loadPortfolios = async () => {
+  const loadData = async () => {
     try {
-      const data = await api.getPortfolios();
-      setPortfolios(data);
-      if (data.length > 0) {
-        setSelectedPortfolioId(data[0].id);
-        loadPerformance(data[0].id);
-      }
+      const data = await fetch(`${API_URL}/stocks`).then(r => r.json()).catch(() => []);
+      setStocks(Array.isArray(data) ? data : []);
     } catch (error) {
-      console.error('Error loading portfolios:', error);
-      setLoading(false);
-    }
-  };
-
-  const loadPerformance = async (portfolioId: number) => {
-    setLoading(true);
-    try {
-      const data = await api.getPortfolioPerformance(portfolioId);
-      setPerformance(data);
-    } catch (error) {
-      console.error('Error loading performance:', error);
+      console.error('Error loading data:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const handlePortfolioChange = (id: number) => {
-    setSelectedPortfolioId(id);
-    loadPerformance(id);
-  };
-
-  const formatCurrency = (num: number | undefined) => {
-    if (num === undefined) return 'Rs. 0';
-    return `Rs. ${num.toFixed(2)}`;
-  };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-text-secondary">Loading...</div>
-      </div>
-    );
-  }
-
-  // Calculate heatmap data
-  const heatmapData: HeatmapData[] = performance?.holdings.map(h => ({
-    symbol: h.symbol,
-    value: (h.current_price || 0) * (h.quantity || 0),
-    change: h.profit_loss_percent || 0,
-    weight: 0, // Will calculate below
-  })) || [];
-
-  // Calculate weights
-  const totalValue = heatmapData.reduce((acc, h) => acc + h.value, 0);
-  heatmapData.forEach(h => {
-    h.weight = totalValue > 0 ? (h.value / totalValue) * 100 : 0;
-  });
-
-  // Sort by value
-  heatmapData.sort((a, b) => b.value - a.value);
-
-  // Get color based on change percentage
   const getColor = (change: number) => {
     const maxChange = 5;
     const normalized = Math.max(-maxChange, Math.min(maxChange, change)) / maxChange;
     
     if (normalized >= 0) {
-      // Green with varying intensity
       const intensity = Math.round(normalized * 255);
-      return `rgb(34, 197, ${94 + (255 - intensity)})`;
+      return `rgba(0, ${200 + (55 - intensity)}, 83, ${0.3 + normalized * 0.7})`;
     } else {
-      // Red with varying intensity
       const intensity = Math.round(Math.abs(normalized) * 255);
-      return `rgb(${239 - intensity}, 68, 68)`;
+      return `rgba(${239}, ${68 - intensity * 0.5}, ${68 - intensity * 0.5}, ${0.3 + Math.abs(normalized) * 0.7})`;
     }
   };
 
+  const getTextColor = (change: number) => {
+    return change >= 0 ? '#00ff41' : '#ff3333';
+  };
+
   return (
-    <div className="space-y-6">
+    <div className="heatmap-page">
       {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold text-text-primary">Portfolio Heatmap</h1>
-          <p className="text-text-secondary text-sm">Visualize your holdings by value and performance</p>
+      <div className="page-header">
+        <div className="header-left">
+          <h1 className="page-title">SECTOR HEATMAP</h1>
+          <span className="stock-count">{stocks.length} stocks</span>
+        </div>
+        <button onClick={loadData} className="btn btn-ghost" disabled={loading}>
+          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+          Refresh
+        </button>
+      </div>
+
+      {/* Summary */}
+      <div className="summary-grid">
+        <div className="summary-card">
+          <span className="summary-card-label">Total Gainers</span>
+          <span className="summary-card-value text-gain">
+            {stocks.filter(s => s.percentageChange > 0).length}
+          </span>
+        </div>
+        <div className="summary-card">
+          <span className="summary-card-label">Total Losers</span>
+          <span className="summary-card-value text-loss">
+            {stocks.filter(s => s.percentageChange < 0).length}
+          </span>
+        </div>
+        <div className="summary-card">
+          <span className="summary-card-label">Avg Change</span>
+          <span className="summary-card-value">
+            {stocks.length > 0 
+              ? (stocks.reduce((sum, s) => sum + s.percentageChange, 0) / stocks.length).toFixed(2)
+              : 0}%
+          </span>
+        </div>
+        <div className="summary-card">
+          <span className="summary-card-label">Top Gainer</span>
+          <span className="summary-card-value text-gain">
+            {stocks.sort((a, b) => b.percentageChange - a.percentageChange)[0]?.symbol || '—'}
+          </span>
         </div>
       </div>
 
-      {/* Portfolio Selector */}
-      {portfolios.length > 1 && (
-        <div className="flex gap-2">
-          {portfolios.map((p) => (
-            <button
-              key={p.id}
-              onClick={() => handlePortfolioChange(p.id)}
-              className={`px-4 py-2 rounded text-sm ${
-                selectedPortfolioId === p.id
-                  ? 'bg-accent text-bg-primary'
-                  : 'bg-bg-secondary text-text-secondary hover:text-text-primary'
-              }`}
-            >
-              {p.name}
-            </button>
-          ))}
+      {/* Heatmap */}
+      <div className="card">
+        <div className="card-header">
+          <span>MARKET HEATMAP</span>
+          <span className="text-xs text-muted">Colored by daily change</span>
         </div>
-      )}
-
-      {!performance || performance.holdings.length === 0 ? (
-        <div className="card text-center py-12">
-          <PieChart className="w-12 h-12 text-text-secondary mx-auto mb-4" />
-          <h2 className="text-lg font-medium text-text-primary mb-2">No Holdings</h2>
-          <p className="text-text-secondary">Add stocks to your portfolio to see the heatmap</p>
-        </div>
-      ) : (
-        <>
-          {/* Summary Cards */}
-          <div className="grid grid-cols-4 gap-4">
-            <div className="card">
-              <div className="text-text-secondary text-sm">Total Value</div>
-              <div className="text-xl font-bold text-text-primary">
-                {formatCurrency(performance.current_value)}
-              </div>
-            </div>
-            <div className="card">
-              <div className="text-text-secondary text-sm">Today's P/L</div>
-              <div className={`text-xl font-bold ${performance.profit_loss >= 0 ? 'text-gain' : 'text-loss'}`}>
-                {performance.profit_loss >= 0 ? '+' : ''}{formatCurrency(performance.profit_loss)}
-              </div>
-            </div>
-            <div className="card">
-              <div className="text-text-secondary text-sm">Total P/L</div>
-              <div className={`text-xl font-bold ${performance.profit_loss_percent >= 0 ? 'text-gain' : 'text-loss'}`}>
-                {performance.profit_loss_percent >= 0 ? '+' : ''}{performance.profit_loss_percent.toFixed(2)}%
-              </div>
-            </div>
-            <div className="card">
-              <div className="text-text-secondary text-sm">Holdings</div>
-              <div className="text-xl font-bold text-text-primary">
-                {performance.holdings.length}
-              </div>
-            </div>
-          </div>
-
-          {/* Heatmap Grid */}
-          <div className="card">
-            <h2 className="text-lg font-semibold text-text-primary mb-4">Holdings Heatmap</h2>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-              {heatmapData.map((holding) => (
+        <div className="heatmap-container">
+          {loading ? (
+            <div className="loading-container"><div className="loading-spinner"></div></div>
+          ) : (
+            <div className="heatmap-grid">
+              {stocks.sort((a, b) => b.percentageChange - a.percentageChange).map((stock) => (
                 <div
-                  key={holding.symbol}
-                  className="p-4 rounded cursor-pointer hover:opacity-90 transition-opacity"
-                  style={{ backgroundColor: getColor(holding.change) }}
+                  key={stock.symbol}
+                  className="heatmap-cell"
+                  style={{
+                    background: getColor(stock.percentageChange),
+                    borderColor: stock.percentageChange >= 0 ? '#00c853' : '#ff3333',
+                  }}
+                  onClick={() => navigate(`/stocks/${stock.symbol}`)}
                 >
-                  <div className="flex justify-between items-start mb-2">
-                    <span className="font-bold text-white text-shadow">{holding.symbol}</span>
-                    <span className={`text-xs ${holding.change >= 0 ? 'text-white' : 'text-white/80'}`}>
-                      {holding.change >= 0 ? <TrendingUp className="w-3 h-3 inline" /> : <TrendingDown className="w-3 h-3 inline" />}
-                      {holding.change >= 0 ? '+' : ''}{holding.change.toFixed(2)}%
-                    </span>
+                  <div className="heatmap-symbol" style={{ color: getTextColor(stock.percentageChange) }}>
+                    {stock.symbol}
                   </div>
-                  <div className="text-white/90 text-sm">
-                    {formatCurrency(holding.value)}
+                  <div className="heatmap-change" style={{ color: getTextColor(stock.percentageChange) }}>
+                    {stock.percentageChange >= 0 ? '+' : ''}{stock.percentageChange?.toFixed(2)}%
                   </div>
-                  <div className="text-white/70 text-xs">
-                    {holding.weight.toFixed(1)}%
+                  <div className="heatmap-price">
+                    Rs. {stock.lastTradedPrice?.toLocaleString()}
                   </div>
                 </div>
               ))}
             </div>
-          </div>
+          )}
+        </div>
+      </div>
 
-          {/* Legend */}
-          <div className="card">
-            <h3 className="text-text-secondary text-sm mb-3">Legend</h3>
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 rounded" style={{ backgroundColor: 'rgb(34, 197, 94)' }} />
-                <span className="text-text-secondary text-xs">+5%</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 rounded" style={{ backgroundColor: 'rgb(34, 197, 150)' }} />
-                <span className="text-text-secondary text-xs">+2.5%</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 rounded" style={{ backgroundColor: 'rgb(200, 200, 200)' }} />
-                <span className="text-text-secondary text-xs">0%</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 rounded" style={{ backgroundColor: 'rgb(239, 100, 100)' }} />
-                <span className="text-text-secondary text-xs">-2.5%</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 rounded" style={{ backgroundColor: 'rgb(239, 68, 68)' }} />
-                <span className="text-text-secondary text-xs">-5%</span>
-              </div>
-            </div>
+      {/* Legend */}
+      <div className="card">
+        <div className="card-header">LEGEND</div>
+        <div className="legend-container">
+          <div className="legend-item">
+            <div className="legend-color" style={{ background: 'rgba(0, 255, 65, 1)' }}></div>
+            <span>+5%</span>
           </div>
-        </>
-      )}
+          <div className="legend-item">
+            <div className="legend-color" style={{ background: 'rgba(0, 200, 83, 0.5)' }}></div>
+            <span>+2.5%</span>
+          </div>
+          <div className="legend-item">
+            <div className="legend-color" style={{ background: 'rgba(100, 100, 100, 0.3)' }}></div>
+            <span>0%</span>
+          </div>
+          <div className="legend-item">
+            <div className="legend-color" style={{ background: 'rgba(239, 100, 100, 0.5)' }}></div>
+            <span>-2.5%</span>
+          </div>
+          <div className="legend-item">
+            <div className="legend-color" style={{ background: 'rgba(255, 51, 51, 1)' }}></div>
+            <span>-5%</span>
+          </div>
+        </div>
+      </div>
+
+      <style>{`
+        .heatmap-page {
+          max-width: 1600px;
+          margin: 0 auto;
+        }
+
+        .page-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 16px;
+        }
+
+        .header-left {
+          display: flex;
+          align-items: baseline;
+          gap: 12px;
+        }
+
+        .page-title {
+          font-family: 'JetBrains Mono', monospace;
+          font-size: 1.1rem;
+          font-weight: 600;
+          letter-spacing: 1px;
+        }
+
+        .heatmap-container {
+          padding: 16px;
+        }
+
+        .heatmap-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+          gap: 8px;
+        }
+
+        .heatmap-cell {
+          padding: 12px;
+          cursor: pointer;
+          transition: all 0.1s;
+          border: 1px solid transparent;
+        }
+
+        .heatmap-cell:hover {
+          transform: scale(1.02);
+          z-index: 1;
+        }
+
+        .heatmap-symbol {
+          font-family: 'JetBrains Mono', monospace;
+          font-weight: 700;
+          font-size: 0.9rem;
+          margin-bottom: 4px;
+        }
+
+        .heatmap-change {
+          font-family: 'JetBrains Mono', monospace;
+          font-weight: 600;
+          font-size: 0.85rem;
+        }
+
+        .heatmap-price {
+          font-size: 0.7rem;
+          color: rgba(255, 255, 255, 0.7);
+          margin-top: 4px;
+        }
+
+        .legend-container {
+          display: flex;
+          gap: 24px;
+          padding: 16px;
+        }
+
+        .legend-item {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 0.75rem;
+          color: var(--text-muted);
+        }
+
+        .legend-color {
+          width: 20px;
+          height: 20px;
+        }
+
+        .loading-container {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 48px;
+        }
+      `}</style>
     </div>
   );
 }

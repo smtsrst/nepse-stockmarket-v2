@@ -1,17 +1,29 @@
 import { useState, useEffect } from 'react';
-import { api } from '../api/client';
-import { Eye, Plus, Trash2, TrendingUp, TrendingDown } from 'lucide-react';
-import type { StockData } from '../types';
-import StockSelect from '../components/StockSelect';
+import { useNavigate } from 'react-router-dom';
+import { Eye, Plus, Trash2, TrendingUp, TrendingDown, Search } from 'lucide-react';
 
+const API_URL = import.meta.env.VITE_API_URL || 'https://frontend-eight-tan-70.vercel.app/api';
 const WATCHLIST_KEY = 'nepse_watchlist';
 
+interface Stock {
+  symbol: string;
+  name: string;
+  lastTradedPrice: number;
+  percentageChange: number;
+  open: number;
+  high: number;
+  low: number;
+  volume: number;
+}
+
 export default function WatchlistPage() {
-  const [stocks, setStocks] = useState<StockData[]>([]);
+  const [stocks, setStocks] = useState<Stock[]>([]);
   const [watchlist, setWatchlist] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedSymbol, setSelectedSymbol] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const navigate = useNavigate();
 
   useEffect(() => {
     loadData();
@@ -19,11 +31,9 @@ export default function WatchlistPage() {
 
   const loadData = async () => {
     try {
-      // Load all stocks
-      const stockData = await api.getStocks();
+      const stockData = await fetch(`${API_URL}/stocks`).then(r => r.json()).catch(() => []);
       setStocks(stockData);
 
-      // Load watchlist from localStorage
       const saved = localStorage.getItem(WATCHLIST_KEY);
       if (saved) {
         setWatchlist(JSON.parse(saved));
@@ -37,7 +47,6 @@ export default function WatchlistPage() {
 
   const addToWatchlist = () => {
     if (!selectedSymbol || watchlist.includes(selectedSymbol)) return;
-    
     const updated = [...watchlist, selectedSymbol];
     setWatchlist(updated);
     localStorage.setItem(WATCHLIST_KEY, JSON.stringify(updated));
@@ -47,156 +56,260 @@ export default function WatchlistPage() {
 
   const removeFromWatchlist = (symbol: string) => {
     if (!confirm(`Remove ${symbol} from watchlist?`)) return;
-    
     const updated = watchlist.filter(s => s !== symbol);
     setWatchlist(updated);
     localStorage.setItem(WATCHLIST_KEY, JSON.stringify(updated));
   };
 
-  const formatPrice = (num: number | undefined) => {
-    if (num === undefined) return '-';
-    return `Rs. ${num.toFixed(2)}`;
-  };
+  const filteredStocks = stocks.filter(s => 
+    s.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    s.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
-  const formatNumber = (num: number | undefined) => {
-    if (num === undefined) return '0';
-    if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
-    if (num >= 1000) return `${(num / 1000).toFixed(1)}K`;
-    return num.toString();
-  };
-
-  // Get stock data for watchlist items
   const watchlistStocks = watchlist
     .map(symbol => stocks.find(s => s.symbol === symbol))
-    .filter(Boolean) as StockData[];
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-text-secondary">Loading...</div>
-      </div>
-    );
-  }
+    .filter(Boolean) as Stock[];
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold text-text-primary">Watchlist</h1>
-          <p className="text-text-secondary text-sm">Track stocks without owning</p>
+    <div className="watchlist">
+      <div className="dashboard-header">
+        <div className="header-left">
+          <h1 className="page-title">WATCHLIST</h1>
         </div>
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="button flex items-center gap-2"
-        >
-          <Plus className="w-4 h-4" />
-          Add Stock
-        </button>
+        <div className="header-right">
+          <button onClick={() => setShowAddModal(true)} className="btn btn-primary">
+            <Plus size={14} />
+            Add Stock
+          </button>
+        </div>
       </div>
 
-      {/* Watchlist Table */}
       {watchlistStocks.length === 0 ? (
-        <div className="card text-center py-12">
-          <Eye className="w-12 h-12 text-text-secondary mx-auto mb-4" />
-          <h2 className="text-lg font-medium text-text-primary mb-2">No Stocks in Watchlist</h2>
-          <p className="text-text-secondary mb-4">Add stocks to track their performance</p>
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="button"
-          >
+        <div className="card text-center py-16">
+          <Eye size={48} className="mx-auto mb-4 text-muted" />
+          <h2 className="text-lg font-medium mb-2">No Stocks in Watchlist</h2>
+          <p className="text-muted mb-4">Track stocks without owning them</p>
+          <button onClick={() => setShowAddModal(true)} className="btn btn-primary">
+            <Plus size={14} />
             Add Stock
           </button>
         </div>
       ) : (
-        <div className="card overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="text-text-secondary text-sm border-b border-border">
-                <th className="text-left py-3 px-2">Symbol</th>
-                <th className="text-right py-3 px-2">Price</th>
-                <th className="text-right py-3 px-2">Change</th>
-                <th className="text-right py-3 px-2 hidden md:table-cell">Open</th>
-                <th className="text-right py-3 px-2 hidden md:table-cell">High</th>
-                <th className="text-right py-3 px-2 hidden md:table-cell">Low</th>
-                <th className="text-right py-3 px-2">Volume</th>
-                <th className="text-right py-3 px-2 w-16"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {watchlistStocks.map((stock) => (
-                <tr key={stock.symbol} className="border-b border-border hover:bg-bg-tertiary/50">
-                  <td className="py-3 px-2">
-                    <div className="font-medium text-text-primary">{stock.symbol}</div>
-                    <div className="text-text-secondary text-xs hidden md:block">{stock.name?.slice(0, 30)}</div>
-                  </td>
-                  <td className="py-3 px-2 text-right font-medium text-text-primary">
-                    {formatPrice(stock.last_traded_price)}
-                  </td>
-                  <td className={`py-3 px-2 text-right ${(stock.percentage_change || 0) >= 0 ? 'text-gain' : 'text-loss'}`}>
-                    <div className="flex items-center justify-end gap-1">
-                      {(stock.percentage_change || 0) >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                      {stock.percentage_change ? (stock.percentage_change >= 0 ? '+' : '') : ''}{stock.percentage_change?.toFixed(2)}%
-                    </div>
-                  </td>
-                  <td className="py-3 px-2 text-right text-text-secondary hidden md:table-cell">
-                    {formatPrice(stock.open_price)}
-                  </td>
-                  <td className="py-3 px-2 text-right text-text-secondary hidden md:table-cell">
-                    {formatPrice(stock.high_price)}
-                  </td>
-                  <td className="py-3 px-2 text-right text-text-secondary hidden md:table-cell">
-                    {formatPrice(stock.low_price)}
-                  </td>
-                  <td className="py-3 px-2 text-right text-text-secondary">
-                    {formatNumber(stock.volume)}
-                  </td>
-                  <td className="py-3 px-2 text-right">
-                    <button
-                      onClick={() => removeFromWatchlist(stock.symbol)}
-                      className="text-loss hover:text-loss/70 p-1"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </td>
+        <div className="card">
+          <div className="table-container">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Symbol</th>
+                  <th>Name</th>
+                  <th style={{ textAlign: 'right' }}>Price</th>
+                  <th style={{ textAlign: 'right' }}>Change</th>
+                  <th style={{ textAlign: 'right' }} className="hidden-md">Open</th>
+                  <th style={{ textAlign: 'right' }} className="hidden-md">High</th>
+                  <th style={{ textAlign: 'right' }} className="hidden-md">Low</th>
+                  <th style={{ textAlign: 'right' }}>Volume</th>
+                  <th style={{ width: 60 }}></th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {watchlistStocks.map((stock) => (
+                  <tr key={stock.symbol} onClick={() => navigate(`/stocks/${stock.symbol}`)} style={{ cursor: 'pointer' }}>
+                    <td className="font-mono font-semibold">{stock.symbol}</td>
+                    <td className="text-secondary">{stock.name}</td>
+                    <td className="font-mono" style={{ textAlign: 'right' }}>
+                      Rs. {stock.lastTradedPrice?.toLocaleString()}
+                    </td>
+                    <td className={`font-mono ${stock.percentageChange >= 0 ? 'text-gain' : 'text-loss'}`} style={{ textAlign: 'right' }}>
+                      {stock.percentageChange >= 0 ? '+' : ''}{stock.percentageChange?.toFixed(2)}%
+                    </td>
+                    <td className="font-mono text-secondary hidden-md" style={{ textAlign: 'right' }}>
+                      Rs. {stock.open?.toLocaleString()}
+                    </td>
+                    <td className="font-mono text-secondary hidden-md" style={{ textAlign: 'right' }}>
+                      Rs. {stock.high?.toLocaleString()}
+                    </td>
+                    <td className="font-mono text-secondary hidden-md" style={{ textAlign: 'right' }}>
+                      Rs. {stock.low?.toLocaleString()}
+                    </td>
+                    <td className="font-mono text-secondary" style={{ textAlign: 'right' }}>
+                      {stock.volume?.toLocaleString()}
+                    </td>
+                    <td>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); removeFromWatchlist(stock.symbol); }}
+                        className="btn btn-ghost btn-icon text-loss"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
-      {/* Add Stock Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-bg-secondary border border-border p-6 rounded w-full max-w-md">
-            <h2 className="text-xl font-bold text-text-primary mb-4">Add to Watchlist</h2>
-            <div className="mb-4">
-              <label className="block text-text-secondary text-sm mb-2">Select Stock</label>
-              <StockSelect
-                value={selectedSymbol}
-                onChange={setSelectedSymbol}
-                placeholder="Search and select a stock..."
-              />
+        <div className="modal-overlay" onClick={() => setShowAddModal(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="modal-title">ADD TO WATCHLIST</h2>
+              <button onClick={() => setShowAddModal(false)} className="btn btn-ghost btn-icon">
+                ×
+              </button>
             </div>
-            <div className="flex gap-2">
-              <button 
-                onClick={addToWatchlist}
-                disabled={!selectedSymbol || watchlist.includes(selectedSymbol)}
-                className="button flex-1 disabled:opacity-50"
-              >
-                Add
-              </button>
-              <button 
-                onClick={() => { setShowAddModal(false); setSelectedSymbol(''); }}
-                className="button-secondary flex-1"
-              >
-                Cancel
-              </button>
+            <div className="modal-body">
+              <div className="search-container">
+                <Search size={16} className="search-icon" />
+                <input
+                  type="text"
+                  placeholder="Search stocks..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="search-input"
+                  autoFocus
+                />
+              </div>
+              <div className="stock-select-list">
+                {loading ? (
+                  <div className="loading-container"><div className="loading-spinner"></div></div>
+                ) : filteredStocks.length === 0 ? (
+                  <p className="text-center text-muted py-4">No stocks found</p>
+                ) : filteredStocks.slice(0, 20).map((stock) => (
+                  <div
+                    key={stock.symbol}
+                    onClick={() => { setSelectedSymbol(stock.symbol); addToWatchlist(); }}
+                    className={`stock-select-item ${watchlist.includes(stock.symbol) ? 'disabled' : ''}`}
+                  >
+                    <div className="stock-avatar">{stock.symbol.slice(0, 2)}</div>
+                    <div className="stock-info">
+                      <div className="stock-symbol">{stock.symbol}</div>
+                      <div className="stock-name">{stock.name}</div>
+                    </div>
+                    <div className="stock-price">
+                      <span className={`text-gain ${stock.percentageChange >= 0 ? '' : 'text-loss'}`}>
+                        {stock.percentageChange >= 0 ? '+' : ''}{stock.percentageChange?.toFixed(2)}%
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
       )}
+
+      <style>{`
+        .watchlist {
+          max-width: 1400px;
+          margin: 0 auto;
+        }
+
+        .search-container {
+          position: relative;
+          margin-bottom: 16px;
+        }
+
+        .search-icon {
+          position: absolute;
+          left: 12px;
+          top: 50%;
+          transform: translateY(-50%);
+          color: var(--text-muted);
+        }
+
+        .search-input {
+          width: 100%;
+          padding: 10px 12px 10px 40px;
+          background: var(--bg-tertiary);
+          border: 1px solid var(--border);
+          border-radius: 4px;
+          color: var(--text-primary);
+          font-family: 'JetBrains Mono', monospace;
+          font-size: 0.85rem;
+        }
+
+        .search-input:focus {
+          outline: none;
+          border-color: var(--accent);
+        }
+
+        .stock-select-list {
+          max-height: 300px;
+          overflow-y: auto;
+        }
+
+        .stock-select-item {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 10px 12px;
+          border-radius: 4px;
+          cursor: pointer;
+          transition: background 0.15s;
+        }
+
+        .stock-select-item:hover {
+          background: var(--bg-tertiary);
+        }
+
+        .stock-select-item.disabled {
+          opacity: 0.4;
+          cursor: not-allowed;
+        }
+
+        .stock-select-item .stock-price {
+          margin-left: auto;
+          font-family: 'JetBrains Mono', monospace;
+          font-size: 0.85rem;
+        }
+
+        .modal-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.7);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 100;
+        }
+
+        .modal-content {
+          background: var(--bg-secondary);
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          width: 100%;
+          max-width: 480px;
+          max-height: 80vh;
+          overflow: hidden;
+        }
+
+        .modal-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 16px 20px;
+          border-bottom: 1px solid var(--border);
+        }
+
+        .modal-title {
+          font-family: 'JetBrains Mono', monospace;
+          font-size: 0.9rem;
+          font-weight: 600;
+          letter-spacing: 0.5px;
+        }
+
+        .modal-body {
+          padding: 20px;
+        }
+
+        @media (max-width: 768px) {
+          .hidden-md {
+            display: none;
+          }
+        }
+      `}</style>
     </div>
   );
 }
