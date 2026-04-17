@@ -3,36 +3,76 @@
 A modern, robust NEPSE stock market analysis system with:
 - **Live Data** - Real-time prices from NEPSE official API
 - **Technical Analysis** - RSI, MACD, Bollinger Bands, Moving Averages
-- **Floorsheet Analytics** - Broker buying/selling patterns
-- **ML Predictions** - Ensemble (Rule + ML) recommendations (coming soon)
+- **ML Predictions** - Random Forest model for next-day price prediction
 - **Portfolio Tracking** - Track holdings with P/L
 - **Auto-Refresh** - Updates during trading hours
-- **JWT Authentication** - Secure user accounts
+- **Free Hosting** - Vercel + Neon PostgreSQL
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────┐
+│                   Vercel (Free)                  │
+│  ┌──────────────────┬──────────────────────┐   │
+│  │  React Frontend  │   Serverless API     │   │
+│  │  (Auto-deploy)   │   (GET endpoints)    │   │
+│  └──────────────────┴──────────────────────┘   │
+└──────────────────────┬─────────────────────────┘
+                       │ Cached 5-15 min
+         ┌─────────────▼─────────────┐
+         │    Neon PostgreSQL        │
+         │    (0.5 GB free)          │
+         └───────────────────────────┘
+
+GitHub Actions (Free) - Nightly 1AM
+┌─────────────────────────────────────────────────┐
+│  1. Collect NEPSE data                          │
+│  2. Train ML model (Random Forest)             │
+│  3. Generate predictions                        │
+│  4. Store results in Neon                       │
+└─────────────────────────────────────────────────┘
+```
 
 ## Tech Stack
 
 - **Frontend:** React 18 + Vite + TypeScript + Tailwind CSS
-- **Backend:** FastAPI + Python + SQLAlchemy
-- **Database:** SQLite (dev) / PostgreSQL (prod)
-- **Auth:** JWT + bcrypt
-- **Data:** nepse-data-api
+- **API:** Vercel Serverless Functions
+- **Database:** Neon PostgreSQL (0.5 GB free tier)
+- **ML:** GitHub Actions + scikit-learn
 
-## Quick Start
+## Deployment Guide
 
-### Backend
+### Prerequisites
+1. [Vercel](https://vercel.com) account (free)
+2. [Neon](https://neon.tech) account (free)
 
-```bash
-cd backend
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
-pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
-```
+### Step 1: Create Neon Database
 
-API available at: http://localhost:8000
-API docs at: http://localhost:8000/docs
+1. Go to [Neon Console](https://console.neon.tech)
+2. Create a new project
+3. Copy the connection string (starts with `postgresql://`)
 
-### Frontend
+### Step 2: Deploy to Vercel
+
+1. Push code to GitHub
+2. Import project in Vercel
+3. Add environment variable:
+   - `NEON_DATABASE_URL` = your Neon connection string
+4. Deploy
+
+### Step 3: Configure GitHub Secrets
+
+1. Go to GitHub → Settings → Secrets
+2. Add `NEON_DATABASE_URL` = your Neon connection string
+
+### Step 4: Trigger Initial Data Collection
+
+1. Go to GitHub → Actions
+2. Run "Daily ML Training and Data Collection" manually
+
+## Local Development
+
+### Frontend + API (Vercel)
 
 ```bash
 cd frontend
@@ -40,61 +80,66 @@ npm install
 npm run dev
 ```
 
-Frontend available at: http://localhost:5173
+API available at: http://localhost:5173/api
+
+### ML Pipeline (Local)
+
+```bash
+# Requires DATABASE_URL in environment
+export DATABASE_URL="postgresql://..."
+python scripts/ml_train.py
+```
+
+## API Endpoints
+
+| Endpoint | Description | Cache |
+|----------|-------------|-------|
+| `GET /api/stocks` | All stocks | 5 min |
+| `GET /api/stocks/:symbol` | Single stock | 5 min |
+| `GET /api/stocks/:symbol/history` | Historical data | 1 hour |
+| `GET /api/stocks/:symbol/analysis` | Technical analysis | 1 hour |
+| `GET /api/market/status` | Market open/closed | 1 min |
+| `GET /api/market/summary` | Market summary | 5 min |
+| `GET /api/predict/:symbol` | ML prediction | 24 hours |
 
 ## Project Structure
 
 ```
 nepse-stockmarket-v2/
-├── backend/           # FastAPI backend
-│   └── app/
-│       ├── main.py  # Entry point
-│       ├── api/   # API routes
-│       └── core/  # Business logic
-├── frontend/          # React frontend
-│   └── src/
-│       ├── pages/  # Page components
-│       └── components/  # UI components
-├── core/             # ML/Analysis (legacy)
-├── .backup/          # Backup storage
-└── scripts/         # Backup/restore scripts
+├── frontend/
+│   ├── api/                    # Vercel serverless functions
+│   │   ├── db.ts              # Neon database connection
+│   │   ├── stocks/            # Stock endpoints
+│   │   ├── market/            # Market endpoints
+│   │   └── predict/           # Prediction endpoints
+│   ├── src/
+│   │   ├── pages/             # React page components
+│   │   └── components/        # UI components
+│   └── vercel.json            # Vercel config
+├── .github/workflows/
+│   └── ml-pipeline.yml        # GitHub Actions for ML
+└── README.md
 ```
 
 ## Features
 
-### Phase 1: Core (MVP)
-- [x] Basic dashboard with live prices
+### Completed
+- [x] Dashboard with live prices
 - [x] Technical analysis (RSI, MACD, Bollinger, MA)
-- [x] SQLite database for historical data
-- [x] Market overview (gainers, losers, indices)
+- [x] Neon PostgreSQL for historical data
+- [x] ML predictions via pre-computation
+- [x] Vercel deployment (frontend + API)
+- [x] GitHub Actions for nightly training
 
-### Phase 2: Advanced Analysis
-- [ ] Floorsheet data display
-- [ ] Broker analytics
-- [ ] Market depth visualization
-- [ ] Sector analysis
-- [ ] Company fundamentals
-
-### Phase 3: Intelligence (ML)
-- [ ] ML predictions (Random Forest, Gradient Boosting)
-- [ ] Ensemble predictions (Rule + ML)
-- [ ] Backtesting engine
-
-### Phase 4: Real-time
-- [ ] Auto-refresh during trading hours
+### In Progress
+- [ ] Portfolio tracking
+- [ ] Watchlist
 - [ ] Price alerts
-- [ ] Browser notifications
-
-## Documentation
-
-- [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md) - Full implementation plan
-- [PROJECT_PLAN.md](./PROJECT_PLAN.md) - Original project plan
-- [QUICK_START.md](./QUICK_START.md) - Quick start guide
 
 ## Data Sources
 
-- **Primary:** NEPSE Official API via `nepse-data-api`
-- **Backup:** YONEPSE JSON API
+- **Primary:** NEPSE Official API via `api.nepseapi.com`
+- **ML Training:** GitHub Actions (free compute)
 
 ## License
 
